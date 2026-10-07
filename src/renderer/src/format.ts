@@ -50,11 +50,15 @@ export const workspaceLabel = (w: Workspace) =>
 type ThreadKind = "note" | "question" | "explanation" | "finding" | "comment";
 export type ItemCount = Record<ThreadKind, number>;
 const threadKinds: ThreadKind[] = ["note", "question", "explanation", "finding", "comment"];
+// A thread's first entry about the code on screen (ADR 0015): one whose lines are there.
+export const isShownThread = (
+  e: ReviewEntry,
+): e is ReviewEntry & { path: string; kind: ThreadKind } =>
+  !!e.path && !e.parentId && e.shown && e.kind !== "answer";
 export function countItems(entries: ReviewEntry[]): Map<string, ItemCount> {
   const counts = new Map<string, ItemCount>();
   for (const e of entries) {
-    // Only what's about the code on screen (ADR 0015): entries whose lines are there.
-    if (!e.path || e.parentId || !e.shown || e.kind === "answer") continue;
+    if (!isShownThread(e)) continue;
     const c = counts.get(e.path) ?? {
       note: 0,
       question: 0,
@@ -67,7 +71,6 @@ export function countItems(entries: ReviewEntry[]): Map<string, ItemCount> {
   }
   return counts;
 }
-export const threadCount = (c: ItemCount) => threadKinds.reduce((n, k) => n + c[k], 0);
 export const itemsTitle = (c: ItemCount) =>
   threadKinds
     .filter((k) => c[k])

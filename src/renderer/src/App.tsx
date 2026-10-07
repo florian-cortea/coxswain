@@ -1164,6 +1164,7 @@ export function App() {
                       writing={!!canvasView?.writing}
                       onPick={pickSection}
                       onReviewedChange={(i, on) => markSection(sections[i].files, on)}
+                      onViewThread={(id) => void viewThread(id)}
                     />
                   )}
                   <div

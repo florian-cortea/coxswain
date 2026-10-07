@@ -16,6 +16,9 @@ Where the build stands and what we owe. Newest entry first. Terms are defined in
   `src/core/agents.ts`): Codex through the adapter's ACP `authenticate` (`chat-gpt`, browser), Claude Code with
   `claude auth login --claudeai`, after which its adapter restarts so sessions pick up the new login.
 
+- A view's table of contents takes a click on a section's speech bubble: its one thread is scrolled to, or with
+  several, the one picked from a native menu (`showPickMenu`). Threads on a section's prose count there too.
+
 ### Tech debt
 
 - A signed-out turn is told by the error's data (`signedOut` in `src/core/session-state.ts`): ACP's authRequired,

@@ -301,8 +301,9 @@ _Check again_; nothing else shows until all are there. Then, with no project yet
   (tool-made, tests, what the user said doesn't matter), and sections of only those, are low-lighted, with no label:
   the heading says why. On the canvas's left, a table of contents: how many embedded file diffs are
   reviewed in all with a bar, then every section with how many of its file diffs are reviewed (✓ when all are) and, if
-  any, how many threads are on them, yours and the agent's (a muted speech bubble and the number). The section being read is marked as you scroll; a click jumps
-  to it, and a right-click offers _Reviewed_, which marks all of the section's files as its header's box does. Explanations (labelled _Explanation_) and, with review,
+  any, how many threads are on them and on its prose, yours and the agent's (a muted speech bubble and the number). The section being read is marked as you scroll; a click jumps
+  to it, and a right-click offers _Reviewed_, which marks all of the section's files as its header's box does. A click
+  on the speech bubble scrolls to its thread; with several, a native menu lists them (file and line, or the passage quoted, then the start of the first comment) to pick one. Explanations (labelled _Explanation_) and, with review,
   findings (labelled _Finding_) are threads between the lines, which can be replied to like any other; they show only
   with their view. A view shows the changes as they were, local ones included (pinned to a snapshot, like a
   commit), and its _Reviewed_ ticks stay; once the worktree has moved on (new commits or edits), an amber bar says so. Picking a commit hides the view, and the other way round.
