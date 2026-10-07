@@ -161,6 +161,10 @@ const api = {
   pickAgentSession: (agentSessionId: string): Promise<void> =>
     ipcRenderer.invoke("agents:pick", agentSessionId),
   newSessionAgent: (): Promise<Agent> => ipcRenderer.invoke("agents:new-session-agent"),
+  // Whether the agent pane shows; kept across restarts.
+  getAgentPaneOpen: (): Promise<boolean> => ipcRenderer.invoke("agents:pane-open"),
+  setAgentPaneOpen: (open: boolean): Promise<void> =>
+    ipcRenderer.invoke("agents:set-pane-open", open),
   // The composer's model and effort for an agent's sessions, with the choices; kept for every session of the agent.
   listAgentPicks: (workspaceId: number, agent: Agent): Promise<AgentPicks> =>
     ipcRenderer.invoke("agents:picks", workspaceId, agent),
@@ -353,6 +357,8 @@ const api = {
     return () => void ipcRenderer.off("agents:permission", listener);
   },
   // The user's pick for a permission request, in L4 or a question's thread; null cancels it.
+  // Signs in to the agent again, in the browser, after a turn failed for want of it. Resolves once done.
+  signInAgent: (agent: Agent): Promise<void> => ipcRenderer.invoke("agents:sign-in", agent),
   answerPermission: (id: string, optionId: string | null): Promise<void> =>
     ipcRenderer.invoke("agents:answer-permission", id, optionId),
   onChatEntry: (callback: (agentSessionId: string, entry: ChatEntry) => void) => {

@@ -3,6 +3,28 @@
 Where the build stands and what we owe. Newest entry first. Terms are defined in
 [the glossary](context/coxswain.md); decisions are in [the ADRs](adr/).
 
+## 2026-10-07 — Navigator split
+
+### What works
+
+- The pane left of the canvas is split: the Navigator (_Changes_ · _Files_) on top, _Commits_ · _Turns_ below with
+  its own bar. Its chevron collapses the bottom half to that bar, stuck to the pane's bottom; picking a tab, the
+  range menu's _Commit…_ / _Agent Turn…_ or the palette's Commits and Turns actions expand it.
+- The agent pane can be hidden (the speech bubble at its header's left, or the palette) and shown again from the bar
+  at the window's left of the canvas side. Kept in the settings table (`agent-pane.open`), so it survives restarts.
+- A turn that fails because the agent is signed out offers _Sign In to …_ under the error (`signIn` in
+  `src/core/agents.ts`): Codex through the adapter's ACP `authenticate` (`chat-gpt`, browser), Claude Code with
+  `claude auth login --claudeai`, after which its adapter restarts so sessions pick up the new login.
+
+### Tech debt
+
+- A signed-out turn is told by the error's data (`signedOut` in `src/core/session-state.ts`): ACP's authRequired,
+  Claude Code's `errorKind: "authentication_failed"`, Codex's `codexErrorInfo` (`unauthorized` or HTTP 401). A
+  Claude adapter with a turn running isn't restarted after signing in. Only the agent
+  pane offers to sign in; a failed session start or a question's turn shows the plain error.
+- The halves split the pane evenly; no drag handle between them (`ponytail:` in `App.tsx`). Whether the bottom
+  half is collapsed resets on restart, like the pane widths.
+
 ## 2026-10-05 — Comment threads and agent threads; comments posted as written
 
 ### What works

@@ -7,20 +7,20 @@ Direction for the main screen and navigation. Expected to change as we build; te
 
 Agent-first. Opening a PR shows the project column (L1), the agent pane (L4) on the left and the canvas (L3) on the
 right. The canvas is one explorer that both the agent and the human annotate; for now it shows _Changes_, the
-workspace's file diffs, with the Navigator (L2) or the commits pane on its left. The top bar follows the columns: over
-the left pane, its own bar (hide it, and _Changes_ · _Files_ · _Commits_ · _Turns_ to switch it); over the canvas, what the canvas
+workspace's file diffs, with the Navigator (L2) on its left, the commits or turns under it. The top bar follows the
+columns: over the left pane, its own bar (hide it, and _Changes_ · _Files_ to switch it); over the canvas, what the canvas
 shows — the PR's chip (_#12_ with its checks' dot), _Diff_ with its range, a chip per view, a dashed _New View_ chip — then Back and Forward chevrons, a magnifier
 (Open Quickly), the display options (sliders) and Activity (a pulse icon; see below). A bar at its bottom sums up the
 review.
 
 ```
 ┌────┬─────────────────────────┬──────────────────────────────────────────┐
-│    │ Fix auth · Codex [New▾] │▣ Changes|Files|Comm…│#12● Diff·All▾ [+] ∿│
+│    │ Fix auth · Codex [New▾] │▣ Changes|Files      │#12● Diff·All▾ [+] ∿│
 │ L1 ├─────────────────────────┼─────────────────────┼────────────────────┤
 │    │ [Find…] 1/4 ↑ ↓ ×       │ L2 Navigator        │ [Find…] 3/12 ↑ ↓ × │
 │    │ L4 Agent pane           │                     │ L3 Canvas          │
-│ P  │                         │ or Commits          │                    │
-│ ── │ agent chat              │                     │ files, diffs and   │
+│ P  │                         ├─────────────────────┤                    │
+│ ── │ agent chat              │▾ Commits|Turns      │ files, diffs and   │
 │▌#12│                         │                     │ diagrams (the agent│
 │ #34│                         │                     │ and the human      │
 │ +  │ [attachments ×]         │                     │ annotate it)       │
@@ -108,10 +108,11 @@ _Check again_; nothing else shows until all are there. Then, with no project yet
 
 - **L2 — Navigator**, on the left of the canvas, under its own bar, as wide as it. Hidden at first; the panel button
   at the canvas bar's left, _View > Toggle Navigator_ or ⌘B shows it, and the same button at its bar's left hides it
-  (it comes back as it was, on the Navigator, the commits or the turns). Its border can be dragged. A segmented control in its
+  (it comes back as it was). Its border can be dragged. A segmented control in its
   bar switches between _Changes N_ (N the number of changed files), the changed files as a tree with their status and
-  +/− lines, _Files_, the whole file tree of the workspace, with folders that contain changes marked, _Commits_
-  and _Turns_ (below). Both lists come from the worktree, so _Changes_ shows the PR's file diffs and local changes (e.g. an
+  +/− lines, and _Files_, the whole file tree of the workspace, with folders that contain changes marked. The pane's
+  bottom half shows _Commits_ or _Turns_ (below), switched by a segmented control in its own bar; the chevron there
+  collapses it to that bar, at the pane's bottom, and picking _Commits_ or _Turns_ expands it again. Both lists come from the worktree, so _Changes_ shows the PR's file diffs and local changes (e.g. an
   agent's) together, a file with local changes marked with an amber ● after its +/− lines, and reloads after each
   turn. Reviewed files are hidden unless _Show Reviewed Files_ is on, and then show a ✓; the bottom bar counts them.
   The display options list _Files as Tree_ or _Files as List_ (a flat list, each file's folder dimmed next to its +/−
@@ -137,7 +138,7 @@ _Check again_; nothing else shows until all are there. Then, with no project yet
   file diffs by the one at the top. The keys work wherever the focus is, the Navigator included; the menu items and
   chevrons are greyed out at either end.
 
-  _Commits_ in the pane's bar shows the commits pane in the Navigator's place (one or the other): _All Changes_, then
+  _Commits_ in the bottom half's bar lists, under the Navigator: _All Changes_, then
   _Uncommitted changes_ while the worktree has any (its files and lines added and removed; picking it shows only them,
   live, as the scope _Uncommitted_), then the PR's commits (and local ones on top, marked _not pushed_), newest first, each
   on two lines: its subject (and _merge_ for a merge commit), then its short sha, author (_+N_ for co-authors), how
@@ -306,7 +307,12 @@ _Check again_; nothing else shows until all are there. Then, with no project yet
   with their view. A view shows the changes as they were, local ones included (pinned to a snapshot, like a
   commit), and its _Reviewed_ ticks stay; once the worktree has moved on (new commits or edits), an amber bar says so. Picking a commit hides the view, and the other way round.
 
-- **L4 — Agent pane**, left of the canvas, always shown; its border can be dragged. A chat with one of the
+- **L4 — Agent pane**, left of the canvas; its border can be dragged. The speech-bubble button at its header's left
+  hides it, and the same button at the left of the bar next to it (the Navigator's, or the canvas's) shows it again;
+  so does _Show or Hide the Agent Pane_ in the command palette. Hidden or shown is kept across restarts. A turn that
+  fails because the agent is signed out (an expired login) shows _Sign In to Claude Code_ (or _Codex_) under its error:
+  it opens the agent's login in the browser, says _Finish signing in in your browser…_ meanwhile, and clears the error
+  once signed in; the message can then be sent again. A chat with one of the
   workspace's agent sessions: the current one, the one last used (made, picked in the header or sent a message),
   also after a restart. Picking one makes it current, so comments from the canvas go to the session shown. The header starts with the session's
   title (_Session N_ before its first message) and a chevron, whose native menu lists them all with their dates, then

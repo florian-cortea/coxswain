@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { agentStatus, SessionStates } from "./session-state.ts";
+import * as acp from "@agentclientprotocol/sdk";
+import { agentStatus, SessionStates, signedOut } from "./session-state.ts";
 import type { ChatEntry } from "./agents";
 
 test("history replay is shared before a turn; live state survives a detached pane", async () => {
@@ -197,4 +198,19 @@ test("a session is working, then waiting on a permission, then done until seen",
   assert.deepEqual(states.statuses(), [["a", "done"]]);
   states.seen("a");
   assert.equal(await status(), "idle");
+});
+
+test("a turn that failed for want of a login is told from other failures", () => {
+  assert.ok(signedOut(acp.RequestError.authRequired()));
+  assert.ok(signedOut(acp.RequestError.internalError({ errorKind: "authentication_failed" })));
+  assert.ok(signedOut(acp.RequestError.internalError({ codexErrorInfo: "unauthorized" })));
+  assert.ok(
+    signedOut(
+      acp.RequestError.internalError({
+        codexErrorInfo: { responseStreamFailed: { httpStatusCode: 401 } },
+      }),
+    ),
+  );
+  assert.ok(!signedOut(acp.RequestError.internalError({ errorKind: "rate_limit" })));
+  assert.ok(!signedOut(new Error("Stopped")));
 });

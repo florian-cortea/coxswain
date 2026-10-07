@@ -10,11 +10,12 @@ import type { Workspace } from "../../core/workspaces";
 import { Entry, TurnStatus } from "./ChatEntry";
 import { FindBar } from "./FindBar";
 import { chatFindTarget, findSnapshot, refreshFind, registerFindTarget } from "./find";
-import { Button } from "./components/button";
+import { Button, ToggleButton } from "./components/button";
 import {
   ArrowUpIcon,
   ChevronDownIcon,
   GaugeIcon,
+  MessageSquareIcon,
   PanelLeftIcon,
   PaperclipIcon,
   SparklesIcon,
@@ -41,9 +42,10 @@ type Props = {
   // Attached to the composer when it changes (the New View menu's prompts), for the user to send with a note.
   composerPrompt?: { prompt: AttachedPrompt };
   onShowSidebar?: () => void; // given while the sidebar is hidden: the window buttons are then over this header
+  onHide: () => void; // hides this pane
 };
 
-export function Agents({ workspace, onViewThread, composerPrompt, onShowSidebar }: Props) {
+export function Agents({ workspace, onViewThread, composerPrompt, onShowSidebar, onHide }: Props) {
   const pane = useAgentPane(workspace.id);
   const patch = (change: Parameters<typeof setAgentPane>[1]) => setAgentPane(workspace.id, change);
   const { picked, newAgent, draft, attached, attachments, attaching } = pane;
@@ -234,6 +236,15 @@ export function Agents({ workspace, onViewThread, composerPrompt, onShowSidebar 
             <PanelLeftIcon />
           </Button>
         )}
+        <ToggleButton
+          on
+          icon
+          title="Hide the agent pane"
+          className={cn("shrink-0", noDrag)}
+          onClick={onHide}
+        >
+          <MessageSquareIcon />
+        </ToggleButton>
         <SessionPicker
           sessions={sessions}
           current={session ?? null}
@@ -298,6 +309,17 @@ export function Agents({ workspace, onViewThread, composerPrompt, onShowSidebar 
           running={running}
           permission={permission}
           error={error ?? attachmentError}
+          signIn={
+            live?.signIn
+              ? {
+                  agent: agentNames[agent],
+                  run: async () => {
+                    await window.coxswain.signInAgent(agent);
+                    patch({ error: null });
+                  },
+                }
+              : undefined
+          }
           onAnswer={(optionId) => {
             window.coxswain.answerPermission(permission!.id, optionId);
           }}
