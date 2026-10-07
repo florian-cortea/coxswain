@@ -9,7 +9,7 @@ Agent-first. Opening a PR shows the project column (L1), the agent pane (L4) on 
 right. The canvas is one explorer that both the agent and the human annotate; for now it shows _Changes_, the
 workspace's file diffs, with the Navigator (L2) on its left, the commits or turns under it. The top bar follows the
 columns: over the left pane, its own bar (hide it, and _Changes_ · _Files_ to switch it); over the canvas, what the canvas
-shows — the PR's chip (_#12_ with its checks' dot), _Diff_ with its range, a chip per view, a dashed _New View_ chip — then Back and Forward chevrons, a magnifier
+shows — the PR's chip (_#12_ with its checks' dot), a globe for its live deployments (one opens in the browser; several, a native menu of their environments first), _Diff_ with its range, a chip per view, a dashed _New View_ chip — then Back and Forward chevrons, a magnifier
 (Open Quickly), the display options (sliders) and Activity (a pulse icon; see below). A bar at its bottom sums up the
 review.
 

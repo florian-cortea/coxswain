@@ -306,6 +306,8 @@ export type PullRequestDetails = {
   checks: Check[]; // the head commit's
   checkState: CheckState | null; // all of them at once; null without any
   commitChecks: Record<string, CheckState>; // each commit's, by sha
+  // The head commit's live deployments, the newest per environment: those whose latest status succeeded with a URL.
+  deployments: { environment: string; url: string }[];
   mergeMethods: MergeMethod[];
   conversation: ConversationItem[];
   threads: ReviewThread[];
@@ -333,11 +335,14 @@ const pullRequestQuery = `query($owner: String!, $name: String!, $number: Int!) 
       reviews(last: 50) { nodes { id author { login } body state submittedAt createdAt url } }
       reviewThreads(first: 100) { pageInfo { hasNextPage endCursor } nodes { ${threadFields} } }
       commits(last: 100) { nodes { commit { oid statusCheckRollup { state } } } }
-      headCommit: commits(last: 1) { nodes { commit { statusCheckRollup { state contexts(first: 100) { nodes {
-        __typename
-        ... on CheckRun { name status conclusion detailsUrl databaseId title checkSuite { app { slug } } }
-        ... on StatusContext { context state targetUrl description }
-      } } } } } }
+      headCommit: commits(last: 1) { nodes { commit {
+        deployments(last: 20) { nodes { environment latestStatus { state environmentUrl } } }
+        statusCheckRollup { state contexts(first: 100) { nodes {
+          __typename
+          ... on CheckRun { name status conclusion detailsUrl databaseId title checkSuite { app { slug } } }
+          ... on StatusContext { context state targetUrl description }
+        } } }
+      } } }
     }
   }
 }`;
@@ -428,6 +433,12 @@ type RawPullRequest = {
       headCommit: {
         nodes: {
           commit: {
+            deployments: {
+              nodes: {
+                environment: string | null;
+                latestStatus: { state: string; environmentUrl: string | null } | null;
+              }[];
+            };
             statusCheckRollup: { state: StatusState; contexts: { nodes: RawContext[] } } | null;
           };
         }[];
@@ -560,6 +571,7 @@ export function parsePullRequest(data: RawPullRequest): PullRequestResult {
         c.statusCheckRollup ? [[c.oid, statusState(c.statusCheckRollup.state)]] : [],
       ),
     ),
+    deployments: liveDeployments(pr.headCommit.nodes[0]?.commit.deployments.nodes ?? []),
     mergeMethods: [
       ...(r.mergeCommitAllowed ? ["merge" as const] : []),
       ...(r.squashMergeAllowed ? ["squash" as const] : []),
@@ -665,4 +677,17 @@ export function readJobLog(
       .join("\n");
     return { status: "ok" as const, log };
   });
+}
+
+// Oldest first, as GitHub lists them: the newest of an environment replaces those before it, and counts only if live.
+function liveDeployments(
+  nodes: {
+    environment: string | null;
+    latestStatus: { state: string; environmentUrl: string | null } | null;
+  }[],
+): PullRequestDetails["deployments"] {
+  const newest = new Map(nodes.map((d) => [d.environment ?? "", d.latestStatus]));
+  return [...newest].flatMap(([environment, s]) =>
+    s?.state === "SUCCESS" && s.environmentUrl ? [{ environment, url: s.environmentUrl }] : [],
+  );
 }

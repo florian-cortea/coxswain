@@ -8,6 +8,7 @@ import {
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  GlobeIcon,
   LayersPlusIcon,
   ListTreeIcon,
   MessageSquareIcon,
@@ -198,6 +199,7 @@ export function CanvasBar(props: Props) {
           {props.pr.checkState && <CheckDot state={props.pr.checkState} />}
         </ToggleButton>
       )}
+      {props.pr && props.pr.deployments.length > 0 && <Deployments of={props.pr.deployments} />}
       <div
         className={cn(
           "flex items-center rounded",
@@ -302,6 +304,33 @@ export function CanvasBar(props: Props) {
       </Button>
       <Activity workspaceId={props.workspaceId} onSettings={props.onSettings} />
     </div>
+  );
+}
+
+// The PR's live deployments (its head commit's, e.g. a preview): one opens in the browser, several are picked from a
+// native menu first.
+function Deployments({ of }: { of: PullRequestDetails["deployments"] }) {
+  const one = of.length === 1 ? of[0] : null;
+  return (
+    <ToggleButton
+      on={false}
+      title={one ? `Open ${one.environment}: ${one.url}` : "Open a deployment"}
+      className="flex shrink-0 items-center gap-0.5"
+      onClick={async () => {
+        const d =
+          one ??
+          of[
+            await window.coxswain.showPickMenu(
+              of.map((d) => d.environment || d.url),
+              -1,
+            )
+          ];
+        window.open(d.url);
+      }}
+    >
+      <GlobeIcon />
+      {!one && <ChevronDownIcon />}
+    </ToggleButton>
   );
 }
 
