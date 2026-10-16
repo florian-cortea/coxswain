@@ -116,7 +116,7 @@ _Check again_; nothing else shows until all are there. Then, with no project yet
   agent's) together, a file with local changes marked with an amber ● after its +/− lines, and reloads after each
   turn. Reviewed files are hidden unless _Show Reviewed Files_ is on, and then show a ✓; the bottom bar counts them.
   The display options list _Files as Tree_ or _Files as List_ (a flat list, each file's folder dimmed next to its +/−
-  lines). A changed file with threads (yours, and the agent's while its view shows) shows a speech bubble after its +/−
+  lines). A changed file with open threads (yours, and the agent's while its view shows) shows a speech bubble after its +/−
   lines (hovering says how many of each kind). Selecting a file in _Changes_ scrolls the canvas to its file diff; selecting one in _Files_ shows the whole
   file in the canvas, until the control goes back to _Changes_.
 
@@ -301,7 +301,7 @@ _Check again_; nothing else shows until all are there. Then, with no project yet
   (tool-made, tests, what the user said doesn't matter), and sections of only those, are low-lighted, with no label:
   the heading says why. On the canvas's left, a table of contents: how many embedded file diffs are
   reviewed in all with a bar, then every section with how many of its file diffs are reviewed (✓ when all are) and, if
-  any, how many threads are on them and on its prose, yours and the agent's (a muted speech bubble and the number). The section being read is marked as you scroll; a click jumps
+  any, how many open threads are on them and on its prose (resolved ones aren't counted), yours and the agent's (a muted speech bubble and the number). The section being read is marked as you scroll; a click jumps
   to it, and a right-click offers _Reviewed_, which marks all of the section's files as its header's box does. A click
   on the speech bubble scrolls to its thread; with several, a native menu lists them (file and line, or the passage quoted, then the start of the first comment) to pick one. Explanations (labelled _Explanation_) and, with review,
   findings (labelled _Finding_) are threads between the lines, which can be replied to like any other; they show only

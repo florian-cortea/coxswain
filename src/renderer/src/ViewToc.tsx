@@ -51,10 +51,11 @@ export function ViewToc(props: Props) {
       {sections.map((s, i) => {
         const n = s.files.filter(isReviewed).length;
         const done = n === s.files.length;
-        // Its threads: those on its prose (ADR 0036), in the text's order, then those on its files, in theirs.
+        // Its open threads: those on its prose (ADR 0036), in the text's order, then those on its files, in theirs.
+        // Resolved ones are done, so they aren't counted.
         const paths = s.files.map(openedPath);
         const prose = entries
-          .filter((e) => e.section === i && !e.parentId && e.kind !== "answer")
+          .filter((e) => e.section === i && !e.parentId && e.kind !== "answer" && !e.resolvedAt)
           .sort((a, b) => (a.quoteAt ?? 0) - (b.quoteAt ?? 0));
         const code = entries
           .filter(isShownThread)

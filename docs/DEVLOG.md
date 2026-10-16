@@ -20,6 +20,9 @@ Where the build stands and what we owe. Newest entry first. Terms are defined in
   several, the one picked from a native menu (`showPickMenu`). Threads on a section's prose count there too.
 - The canvas bar shows a globe after the PR's chip when its head commit has live deployments (`deployments` in
   `PullRequestDetails`, read in the PR's query): one opens in the browser, several are picked from a native menu.
+- Views can hold charts: mermaid's `pie` and `xychart` (bars, lines) in a palette of their own (`chartTheme` in
+  `components/text.tsx`, light and dark); the view tools tell the agent to chart numbers it measured or read.
+- The Navigator and a view's table of contents count only open threads; resolved ones are left out.
 
 ### Tech debt
 

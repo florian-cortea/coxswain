@@ -50,11 +50,12 @@ export const workspaceLabel = (w: Workspace) =>
 type ThreadKind = "note" | "question" | "explanation" | "finding" | "comment";
 export type ItemCount = Record<ThreadKind, number>;
 const threadKinds: ThreadKind[] = ["note", "question", "explanation", "finding", "comment"];
-// A thread's first entry about the code on screen (ADR 0015): one whose lines are there.
+// An open thread's first entry about the code on screen (ADR 0015): one whose lines are there. Resolved ones are
+// done, so they aren't counted.
 export const isShownThread = (
   e: ReviewEntry,
 ): e is ReviewEntry & { path: string; kind: ThreadKind } =>
-  !!e.path && !e.parentId && e.shown && e.kind !== "answer";
+  !!e.path && !e.parentId && e.shown && e.kind !== "answer" && !e.resolvedAt;
 export function countItems(entries: ReviewEntry[]): Map<string, ItemCount> {
   const counts = new Map<string, ItemCount>();
   for (const e of entries) {

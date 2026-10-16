@@ -257,7 +257,9 @@ const howToView = `How to write the view: add its sections in reading order with
 Three kinds of fenced blocks do more than show code:
 - A diagram: a \`\`\`mermaid block (flowchart, sequenceDiagram, erDiagram, classDiagram, stateDiagram-v2). Use erDiagram
   or classDiagram for data models, flowchart or sequenceDiagram for data flow. Keep diagrams small enough to read in a
-  column; split a big one. write_section draws each diagram before saving the section, and refuses it with mermaid's
+  column; split a big one. Numbers you measured or read go in a chart, also a mermaid block: pie for parts of a
+  whole, xychart for values across categories or time (\`x-axis [a, b]\`, \`y-axis "unit"\`, then one \`bar [..]\` or
+  \`line [..]\` per series). write_section draws each diagram before saving the section, and refuses it with mermaid's
   error if one doesn't draw.
 - A file diff: \`\`\`diff path=<a changed file, as listed below>, closed by \`\`\` right after, embeds that file's diff as the
   user reviews it, where they can comment. Add the word muted after the path for a file the reader can pass over: made
