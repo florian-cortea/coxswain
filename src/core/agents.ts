@@ -21,7 +21,13 @@ import {
 import { type Commit, diffSize, openedWorktree, type Size } from "./git";
 import { snapshotOf } from "./snapshot";
 import { chat } from "./agent-chat";
-import { type AgentCommand, agentStatuses, SessionStates, type AgentStatus } from "./session-state";
+import {
+  type AgentCommand,
+  agentStatuses,
+  SessionStates,
+  type AgentStatus,
+  signedOut,
+} from "./session-state";
 import { turnEnded, viewTools } from "./views";
 
 // ADR 0018: every agent run is a session over the Agent Client Protocol, in one adapter process per agent.
@@ -106,7 +112,7 @@ function withComment(entry: ChatEntry): ChatEntry {
 export type TurnResult =
   | { status: "ok" }
   | { status: "unsent" }
-  | { status: "error"; message: string };
+  | { status: "error"; message: string; signIn?: boolean }; // signIn: the agent is signed out (signIn below)
 
 // A tool use the agent asks the user to approve (ADR 0018), with the options the agent offers: allow once, always,
 // reject.
@@ -946,6 +952,42 @@ export async function newSessionAgent(db: Db): Promise<Agent> {
   return (await setting(db, "agent")) === "codex" ? "codex" : "claude";
 }
 
+// Signs the user in to the agent again, in the browser: Codex through the adapter (ACP authenticate), Claude Code
+// with its own `claude auth login`, after which its adapter is restarted so new sessions read the new login. Resolves
+// once the login is done.
+// ponytail: an adapter with a turn running keeps its old login until it's restarted; restart it when idle if it bites.
+export async function signIn(name: Agent): Promise<void> {
+  if (name === "codex") {
+    const a = await adapter(name);
+    await a.agent.request(acp.methods.agent.authenticate, { methodId: "chat-gpt" });
+    return sessionStates.signedIn();
+  }
+  const login = spawn(claudeOnPath(), ["auth", "login", "--claudeai"], {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let output = "";
+  login.stdout!.on("data", (d) => (output += d));
+  login.stderr!.on("data", (d) => (output += d));
+  const code = await new Promise<number | null>((resolve, reject) => {
+    login.on("exit", resolve);
+    login.on("error", reject);
+  });
+  if (code !== 0) throw new Error(output.trim() || `claude auth login exited with ${code}`);
+  const a = await adapters.get(name)?.catch(() => null);
+  if (a && ![...a.open].some((id) => listening.has(id))) a.child.kill();
+  sessionStates.signedIn();
+}
+
+// Whether the agent pane shows, left of the canvas. Global; shown unless hidden.
+export async function getAgentPaneOpen(db: Db): Promise<boolean> {
+  return (await setting(db, "agent-pane.open")) !== "false";
+}
+
+export async function setAgentPaneOpen(db: Db, open: boolean) {
+  await saveSetting(db, "agent-pane.open", String(open));
+  emit({ what: "settings" });
+}
+
 // An agent session's workspace and agent. Sessions run in their workspace's worktree, which opening the workspace
 // creates (ADR 0008).
 async function sessionOf(db: Db, agentSessionId: string): Promise<{ id: number; agent: Agent }> {
@@ -1179,7 +1221,7 @@ export async function runTurn(
           .execute();
     }
   } catch (e) {
-    result = { status: "error", message: (e as Error).message };
+    result = { status: "error", message: (e as Error).message, signIn: signedOut(e) };
   } finally {
     if (started) sessionStates.finish(agentSessionId, result);
   }

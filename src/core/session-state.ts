@@ -8,11 +8,24 @@ export type SessionState = {
   running: boolean;
   permission: Permission | null;
   error: string | null;
+  signIn: boolean; // the error is the agent being signed out: the pane offers to sign in again
   tasks: BackgroundTask[];
   queued: QueuedMessage[];
   done: boolean; // its last turn ended and the user hasn't looked since
   commands: AgentCommand[];
 };
+
+// A turn failed because the agent's login is gone or expired: ACP's authRequired when there's no login, else the
+// internal error each adapter tags with why (Claude Code's errorKind; Codex's codexErrorInfo, or its HTTP 401).
+export function signedOut(e: unknown): boolean {
+  const { code, data } = e as { code?: number; data?: Record<string, unknown> };
+  if (code === -32000) return true;
+  if (data?.errorKind === "authentication_failed") return true;
+  const codex = data?.codexErrorInfo;
+  if (codex === "unauthorized") return true;
+  const details = codex && typeof codex === "object" ? Object.values(codex)[0] : null;
+  return (details as { httpStatusCode?: number } | null)?.httpStatusCode === 401;
+}
 
 // A slash command the agent offers in this session (ACP available_commands_update): its own (/compact), a skill or a
 // custom prompt. Sent as the message's text, "/name input", which the agent runs. hint: what to type after it.
@@ -67,6 +80,7 @@ export class SessionStates {
           running: false,
           permission: null,
           error: null,
+          signIn: false,
           tasks: [],
           queued: [],
           done: false,
@@ -89,7 +103,7 @@ export class SessionStates {
 
   start(id: string): boolean {
     if (this.states.get(id)!.running) return false;
-    this.update(id, { running: true, permission: null, error: null, done: false });
+    this.update(id, { running: true, permission: null, error: null, signIn: false, done: false });
     return true;
   }
 
@@ -176,6 +190,12 @@ export class SessionStates {
     if (tasks && left!.length < tasks.length) this.update(id, { tasks: left });
   }
 
+  // The user signed in again: the sessions that failed for want of it lose their error.
+  signedIn() {
+    for (const [id, s] of this.states)
+      if (s.signIn) this.update(id, { error: null, signIn: false });
+  }
+
   // The next queued message, if any, runs straight on, so no other turn starts in between.
   // ponytail: the queue carries on after Stop and after an error; hand it back to the composer if that surprises.
   finish(id: string, result: TurnResult) {
@@ -185,6 +205,7 @@ export class SessionStates {
       queued,
       permission: null,
       error: !next && result.status === "error" ? result.message : null,
+      signIn: !next && result.status === "error" && !!result.signIn,
       done: !next,
     });
     if (next) this.resolve(next.id, "turn");

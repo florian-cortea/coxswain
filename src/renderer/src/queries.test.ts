@@ -32,6 +32,7 @@ test("a delayed IPC read cannot erase streamed text, permission or turn completi
     running: false,
     permission: null,
     error: null,
+    signIn: false,
     tasks: [],
     queued: [],
     done: false,

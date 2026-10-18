@@ -143,6 +143,28 @@ const subscribeDark = (onChange: () => void) => {
   return () => dark.removeEventListener("change", onChange);
 };
 
+// Charts (pie, xychart's bars and lines) get a palette of their own: the diagrams' themes would draw them in greys.
+// Slices are split by a gap of the page's colour rather than outlined.
+const chartPalette = [
+  "#6366f1",
+  "#14b8a6",
+  "#f59e0b",
+  "#f43f5e",
+  "#0ea5e9",
+  "#8b5cf6",
+  "#84cc16",
+  "#f97316",
+];
+const chartTheme = (isDark: boolean) => ({
+  ...Object.fromEntries(chartPalette.map((c, i) => [`pie${i + 1}`, c])),
+  pieOpacity: "1",
+  pieStrokeColor: isDark ? "#171717" : "#ffffff",
+  pieStrokeWidth: "2px",
+  pieOuterStrokeWidth: "0px",
+  pieSectionTextColor: "#ffffff",
+  xyChart: { plotColorPalette: chartPalette.join(","), backgroundColor: "transparent" },
+});
+
 // Draws a mermaid diagram as SVG, loading mermaid first (it's big, so only when one shows). Throws mermaid's error for a
 // diagram that doesn't parse or draw. Parsed first: a failed render leaves mermaid's error graphic in the page.
 let drawn = 0;
@@ -152,6 +174,7 @@ async function drawDiagram(code: string, isDark: boolean): Promise<string> {
     startOnLoad: false,
     securityLevel: "strict",
     theme: isDark ? "dark" : "neutral",
+    themeVariables: chartTheme(isDark),
     fontFamily: "system-ui, sans-serif",
   });
   await mermaid.parse(code);

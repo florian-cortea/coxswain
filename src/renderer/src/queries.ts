@@ -109,6 +109,7 @@ const affects: Record<Changed["what"], Reads[]> = {
     "getPostComments",
     "listAgentPicks",
     "newSessionAgent",
+    "getAgentPaneOpen",
   ],
 };
 const unscoped = new Set<Reads>(["listPullRequestTitles"]);

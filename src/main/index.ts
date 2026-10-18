@@ -22,10 +22,13 @@ import {
   agentsBusy,
   answerPermission,
   askOnce,
+  getAgentPaneOpen,
   listAgentPicks,
   listTurns,
   listAgentSessions,
   newSessionAgent,
+  setAgentPaneOpen,
+  signIn,
   onSessionTitle,
   type Pick,
   readAgentState,
@@ -511,6 +514,9 @@ app.whenReady().then(() => {
     pickAgentSession(db, agentSessionId),
   );
   ipcMain.handle("agents:new-session-agent", () => newSessionAgent(db));
+  ipcMain.handle("agents:pane-open", () => getAgentPaneOpen(db));
+  ipcMain.handle("agents:sign-in", (_, agent: Agent) => signIn(agent));
+  ipcMain.handle("agents:set-pane-open", (_, open: boolean) => setAgentPaneOpen(db, open));
   ipcMain.handle("agents:picks", (_, workspaceId: number, agent: Agent) =>
     listAgentPicks(db, workspaceId, agent),
   );

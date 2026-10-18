@@ -8,8 +8,10 @@ import {
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  GlobeIcon,
   LayersPlusIcon,
   ListTreeIcon,
+  MessageSquareIcon,
   SearchIcon,
   SlidersIcon,
   SpinnerIcon,
@@ -17,25 +19,45 @@ import {
 } from "./components/icons";
 import { cn, divider, muted, selectable, titleBar } from "./components/styles";
 
-export type PaneTab = "diffs" | "files" | "commits" | "turns";
+export type PaneTab = "diffs" | "files";
 
-// The bar over the pane left of the canvas, as wide as it: hide it, and switch it between Changes (the Navigator's
-// file diffs), Files (the whole file tree) and Commits. It drags the window, like the canvas's bar.
+// Given to the bar at the window's left while the agent pane is hidden: a button that shows it again, and room for
+// the window buttons if the sidebar is hidden too.
+export type ShowAgents = { onShow: () => void; inset: boolean };
+const ShowAgentsButton = ({ show }: { show: ShowAgents }) => (
+  <>
+    <Button
+      variant="ghost"
+      title="Show the agent pane"
+      className="shrink-0 p-1 text-neutral-500"
+      onClick={show.onShow}
+    >
+      <MessageSquareIcon />
+    </Button>
+    <div className={cn("mx-1 h-4 border-l", divider)} />
+  </>
+);
+export type HistoryTab = "commits" | "turns";
+
+// The bar over the pane left of the canvas, as wide as it: hide it, and switch the Navigator between Changes (its
+// file diffs) and Files (the whole file tree). It drags the window, like the canvas's bar.
 export function PaneBar(props: {
   tab: PaneTab;
   files: number | undefined; // how many file diffs are on the canvas
-  ready: boolean; // the PR's commits are loaded, so Commits can open
   onTab: (tab: PaneTab) => void;
   onHide: () => void;
+  showAgents?: ShowAgents;
 }) {
   return (
     <div
       className={cn(
         titleBar,
         "gap-1.5 border-b px-2 text-xs [&_button]:[-webkit-app-region:no-drag]",
+        props.showAgents?.inset && "pl-20",
         divider,
       )}
     >
+      {props.showAgents && <ShowAgentsButton show={props.showAgents} />}
       <ToggleButton
         on
         icon
@@ -47,7 +69,7 @@ export function PaneBar(props: {
       </ToggleButton>
       <SegmentedControl
         value={props.tab}
-        onChange={(t) => ((t !== "commits" && t !== "turns") || props.ready) && props.onTab(t)}
+        onChange={props.onTab}
         options={[
           {
             value: "diffs",
@@ -55,6 +77,38 @@ export function PaneBar(props: {
             title: "The changed files",
           },
           { value: "files", label: "Files", title: "The whole file tree of the workspace" },
+        ]}
+      />
+    </div>
+  );
+}
+
+// The bar of the pane's bottom half: collapse it to this bar, and switch it between Commits and Turns. Picking
+// either while collapsed expands it.
+export function HistoryBar(props: {
+  tab: HistoryTab;
+  open: boolean;
+  ready: boolean; // the PR's commits are loaded, so Commits and Turns can open
+  onTab: (tab: HistoryTab) => void;
+  onToggle: () => void;
+}) {
+  return (
+    <div className={cn("flex h-9 shrink-0 items-center gap-1.5 border-t px-2 text-xs", divider)}>
+      <Button
+        variant="ghost"
+        title={props.open ? "Collapse" : "Expand"}
+        className="p-1 text-neutral-500"
+        disabled={!props.ready}
+        onClick={props.onToggle}
+      >
+        <span className={cn("block", !props.open && "rotate-180")}>
+          <ChevronDownIcon />
+        </span>
+      </Button>
+      <SegmentedControl
+        value={props.tab}
+        onChange={(t) => props.ready && props.onTab(t)}
+        options={[
           { value: "commits", label: "Commits", title: "The commits" },
           { value: "turns", label: "Turns", title: "The agent turns that changed the worktree" },
         ]}
@@ -90,6 +144,7 @@ type Props = {
   canForward: boolean;
   onBack: () => void;
   onForward: () => void;
+  showAgents?: ShowAgents; // while the pane is hidden too, this bar is at the window's left
 };
 
 // The canvas's bar: what the canvas shows on the left (the PR with its checks, Diff with its range, a chip per view,
@@ -115,9 +170,11 @@ export function CanvasBar(props: Props) {
       className={cn(
         titleBar,
         "gap-1 border-b px-2 text-xs [&_button]:[-webkit-app-region:no-drag]",
+        props.showAgents?.inset && "pl-20",
         divider,
       )}
     >
+      {props.showAgents && <ShowAgentsButton show={props.showAgents} />}
       {!props.paneOpen && (
         <>
           <Button
@@ -142,6 +199,7 @@ export function CanvasBar(props: Props) {
           {props.pr.checkState && <CheckDot state={props.pr.checkState} />}
         </ToggleButton>
       )}
+      {props.pr && props.pr.deployments.length > 0 && <Deployments of={props.pr.deployments} />}
       <div
         className={cn(
           "flex items-center rounded",
@@ -246,6 +304,33 @@ export function CanvasBar(props: Props) {
       </Button>
       <Activity workspaceId={props.workspaceId} onSettings={props.onSettings} />
     </div>
+  );
+}
+
+// The PR's live deployments (its head commit's, e.g. a preview): one opens in the browser, several are picked from a
+// native menu first.
+function Deployments({ of }: { of: PullRequestDetails["deployments"] }) {
+  const one = of.length === 1 ? of[0] : null;
+  return (
+    <ToggleButton
+      on={false}
+      title={one ? `Open ${one.environment}: ${one.url}` : "Open a deployment"}
+      className="flex shrink-0 items-center gap-0.5"
+      onClick={async () => {
+        const d =
+          one ??
+          of[
+            await window.coxswain.showPickMenu(
+              of.map((d) => d.environment || d.url),
+              -1,
+            )
+          ];
+        window.open(d.url);
+      }}
+    >
+      <GlobeIcon />
+      {!one && <ChevronDownIcon />}
+    </ToggleButton>
   );
 }
 

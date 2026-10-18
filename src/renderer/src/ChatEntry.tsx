@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import type { ChatEntry, Permission, SentComment } from "../../core/agents";
 import { Attachments } from "./Attachments";
 import { Button } from "./components/button";
@@ -127,6 +127,7 @@ export function TurnStatus(props: {
   queued?: boolean;
   permission: Permission | null;
   error: string | null;
+  signIn?: { agent: string; run: () => Promise<void> }; // given when the error is the agent being signed out
   onAnswer: (optionId: string) => void;
 }) {
   return (
@@ -141,7 +142,30 @@ export function TurnStatus(props: {
         )
       )}
       {props.error && <ErrorText>{props.error}</ErrorText>}
+      {props.error && props.signIn && <SignIn {...props.signIn} />}
     </>
+  );
+}
+
+// Signs in to the agent again, in the browser; the error goes once that's done.
+function SignIn({ agent, run }: { agent: string; run: () => Promise<void> }) {
+  const [signing, setSigning] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  return (
+    <div className="flex flex-col items-start gap-1 text-xs">
+      <Button
+        disabled={signing}
+        onClick={async () => {
+          setSigning(true);
+          setFailed(null);
+          await run().catch((e: Error) => setFailed(e.message));
+          setSigning(false);
+        }}
+      >
+        {signing ? "Finish signing in in your browser…" : `Sign In to ${agent}`}
+      </Button>
+      {failed && <ErrorText>{failed}</ErrorText>}
+    </div>
   );
 }
 
