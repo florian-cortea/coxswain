@@ -1,4 +1,6 @@
-import { contextBridge, ipcRenderer, webUtils } from "electron";
+import type { GuideSettings, GuideOverride } from "../core/guides";
+import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
+import type { Appearance, CodeTheme } from "../core/appearance";
 import type { Attachment, AttachmentInput } from "../core/attachments";
 import type { PromptCapabilities } from "@agentclientprotocol/sdk";
 import type {
@@ -34,7 +36,7 @@ import type {
   RepoPage,
 } from "../core/github";
 import type { Posting, PullRequestChange, PullRequestRef, ReviewPost } from "../core/pull-requests";
-import type { AttachedPrompt, Prompt, View, ViewRange } from "../core/views";
+import type { AttachedPrompt, View } from "../core/views";
 import type { Project } from "../core/projects";
 import type { NewEntry, ReviewEntry } from "../core/review";
 import type { DraftThread } from "../core/review-draft";
@@ -42,17 +44,35 @@ import type { SetupCheck } from "../core/setup";
 import type { Workspace } from "../core/workspaces";
 import type { AgentCommand, AgentStatus, SessionState } from "../core/session-state";
 import type { CoreEvent } from "../core/events";
-import type { Job, SummarySettings } from "../core/jobs";
-import type { SummaryCoverage } from "../core/summaries";
+import type { GuideAuthor } from "../shared/guide-authors";
+import type { Job } from "../core/jobs";
 
 // The Navigator's settings in its cog menu. layout: changed files as a tree or as a flat list.
 // The canvas bar's settings in its cog menu. showReviewed: reviewed file diffs stay in the Navigator and on the canvas.
 // The canvas's display options (its sliders button): how file diffs show, and how the Navigator lists them.
+export type GuideOptions = {
+  showResolved: boolean;
+  showReviewedFiles: boolean;
+  onlyFilesWithThreads: boolean;
+  showAgentThreads: boolean;
+  showComments: boolean;
+  hiddenAuthors: string[];
+  shownAuthors: string[];
+};
+export type ChangesMenuResult =
+  | { kind: "filters"; options: GuideOptions }
+  | { kind: "grouping"; enabled: boolean }
+  | { kind: "layout"; layout: "tree" | "list" };
 export type ViewSettings = {
   diffStyle: "unified" | "split";
   showReviewed: boolean;
   layout: "tree" | "list";
 };
+export type SettingsMenuResult =
+  | { kind: "display"; settings: ViewSettings }
+  | { kind: "app" }
+  | { kind: "dismissed" };
+
 // What the Diff tab shows (glossary: scope), or "commits" / "turns" to pick a commit or an agent turn in its pane.
 export type RangePick = "all" | "pushed" | "unpushed" | "uncommitted" | "commits" | "turns";
 // How much each layer of the diff has, for the range menu: commits, and files for uncommitted.
@@ -64,6 +84,19 @@ export type Changed =
   | (InWorkspace & { what: Exclude<InWorkspace["what"], "opened"> });
 
 // The one interface between the UI and the core (ADR 0002).
+// Native window presentation comes from the main process. Default CSS stays solid until attachment succeeds.
+ipcRenderer.on("window:material", (_, material: "glass" | "opaque") => {
+  document.documentElement.dataset.windowMaterial = material;
+});
+// Native controls use window points; page zoom must not shrink their DOM anchor boxes.
+const syncWindowZoom = () => {
+  const zoom = webFrame.getZoomFactor();
+  document.documentElement.style.setProperty("--window-zoom", String(zoom));
+  document.documentElement.style.setProperty("--native-toolbar-height", `${44 / zoom}px`);
+};
+window.addEventListener("DOMContentLoaded", syncWindowZoom);
+window.addEventListener("resize", syncWindowZoom);
+
 const api = {
   currentUser: (): Promise<CurrentUser> => ipcRenderer.invoke("github:current-user"),
   listRepos: (page: number): Promise<RepoPage> => ipcRenderer.invoke("github:list-repos", page),
@@ -131,6 +164,9 @@ const api = {
     ipcRenderer.invoke("lsp:usages", workspaceId, at),
   // The startup check: which of git, gh (signed in) and claude are missing.
   checkSetup: (): Promise<SetupCheck> => ipcRenderer.invoke("setup:check"),
+  getClosedWorkspaceTabs: (): Promise<number[]> => ipcRenderer.invoke("workspaces:closed-tabs"),
+  setWorkspaceTabOpen: (workspaceId: number, open: boolean): Promise<void> =>
+    ipcRenderer.invoke("workspaces:tab-open", workspaceId, open),
   listWorkspaces: (projectId: number): Promise<Workspace[]> =>
     ipcRenderer.invoke("workspaces:list", projectId),
   openWorkspace: (workspaceId: number): Promise<void> =>
@@ -166,8 +202,8 @@ const api = {
   setAgentPaneOpen: (open: boolean): Promise<void> =>
     ipcRenderer.invoke("agents:set-pane-open", open),
   // The composer's model and effort for an agent's sessions, with the choices; kept for every session of the agent.
-  listAgentPicks: (workspaceId: number, agent: Agent): Promise<AgentPicks> =>
-    ipcRenderer.invoke("agents:picks", workspaceId, agent),
+  listAgentPicks: (workspaceId: number, agent: Agent, model?: string): Promise<AgentPicks> =>
+    ipcRenderer.invoke("agents:picks", workspaceId, agent, model),
   setAgentPick: (agent: Agent, pick: Pick, value: string): Promise<void> =>
     ipcRenderer.invoke("agents:set-pick", agent, pick, value),
   readAgentState: (agentSessionId: string): Promise<SessionState> =>
@@ -315,14 +351,10 @@ const api = {
   listViews: (workspaceId: number): Promise<View[]> =>
     ipcRenderer.invoke("views:list", workspaceId),
   // Removes a view with its explanations and findings.
-  removeView: (viewId: number): Promise<void> => ipcRenderer.invoke("views:remove", viewId),
   // ADR 0030: the core keeps the workspace on screen fresh (its HEAD, what's pushed, GitHub); null stops.
   watchWorkspace: (workspaceId: number | null): Promise<void> =>
     ipcRenderer.invoke("workspaces:watch", workspaceId),
-  // How many of the workspace's committed file diffs have a file summary.
-  summaryCoverage: (workspaceId: number): Promise<SummaryCoverage | null> =>
-    ipcRenderer.invoke("summaries:coverage", workspaceId),
-  // ADR 0029: the file summary jobs Activity shows, newest first, and how they change.
+  // Background Guide and comment-summary jobs, newest first, with pushed updates.
   listJobs: (): Promise<Job[]> => ipcRenderer.invoke("jobs:list"),
   onJobs: (callback: (jobs: Job[]) => void) => {
     const listener = (_: unknown, jobs: Job[]) => callback(jobs);
@@ -330,9 +362,23 @@ const api = {
     return () => void ipcRenderer.off("jobs:changed", listener);
   },
   stopJob: (id: number): Promise<void> => ipcRenderer.invoke("jobs:stop", id),
-  getSummarySettings: (): Promise<SummarySettings> => ipcRenderer.invoke("summaries:settings"),
-  setSummarySettings: (s: Partial<SummarySettings>): Promise<void> =>
-    ipcRenderer.invoke("summaries:set-settings", s),
+  getCodeTheme: (): Promise<CodeTheme> => ipcRenderer.invoke("settings:code-theme"),
+  setCodeTheme: (value: CodeTheme): Promise<void> =>
+    ipcRenderer.invoke("settings:set-code-theme", value),
+  getAppearance: (): Promise<Appearance> => ipcRenderer.invoke("settings:appearance"),
+  setAppearance: (value: Appearance): Promise<void> =>
+    ipcRenderer.invoke("settings:set-appearance", value),
+  getGuideInstructions: (workspaceId: number): Promise<string> =>
+    ipcRenderer.invoke("guides:instructions", workspaceId),
+  regenerateGuide: (
+    workspaceId: number,
+    instructions?: string,
+    override?: GuideOverride,
+  ): Promise<void> => ipcRenderer.invoke("guides:regenerate", workspaceId, instructions, override),
+  getGuideSettings: (agent?: GuideSettings["agent"]): Promise<GuideSettings> =>
+    ipcRenderer.invoke("guides:settings", agent),
+  setGuideSettings: (settings: Partial<GuideSettings>): Promise<void> =>
+    ipcRenderer.invoke("guides:set-settings", settings),
   // The composer's Comment/Agent toggle, kept for every comment box.
   getCommentToAgent: (): Promise<boolean> => ipcRenderer.invoke("settings:comment-to-agent"),
   setCommentToAgent: (toAgent: boolean): Promise<void> =>
@@ -367,6 +413,21 @@ const api = {
     return () => void ipcRenderer.off("agents:entry", listener);
   },
   // Native menu (ADR 0004). Resolves with the new settings when an item is picked; stays pending if dismissed.
+  showSettingsMenu: (settings: ViewSettings): Promise<SettingsMenuResult> =>
+    ipcRenderer.invoke("menus:settings", settings),
+  showGuideMenu: (
+    options: GuideOptions,
+    authors: GuideAuthor[],
+  ): Promise<GuideOptions | "update" | null> => ipcRenderer.invoke("menus:guide", options, authors),
+  showChangesMenu: (
+    options: GuideOptions,
+    authors: GuideAuthor[],
+    layout: "tree" | "list",
+    grouped: boolean,
+  ): Promise<ChangesMenuResult | null> =>
+    ipcRenderer.invoke("menus:changes", options, authors, layout, grouped),
+  showFilesMenu: (settings: ViewSettings): Promise<ViewSettings | null> =>
+    ipcRenderer.invoke("menus:files", settings),
   showViewMenu: (settings: ViewSettings): Promise<ViewSettings> =>
     ipcRenderer.invoke("menus:view", settings),
   // The Diff tab's range menu: a scope, or "commits". `scope` is null while a commit or turn shows. Pending if dismissed.
@@ -377,14 +438,18 @@ const api = {
   ): Promise<RangePick> => ipcRenderer.invoke("menus:range", scope, hasPr, layers),
   // A thread's ⋯ menu; stays pending if dismissed. url: its comment on GitHub, opened in the browser from the menu.
   showThreadMenu: (can: {
+    edit: boolean;
     send: boolean;
     summarize: boolean;
     delete: boolean | "others";
     url: string | null;
-  }): Promise<"delete" | "send" | "summarize"> => ipcRenderer.invoke("menus:thread", can),
+  }): Promise<"edit" | "delete" | "send" | "summarize"> => ipcRenderer.invoke("menus:thread", can),
   // One of the user's comments' ⋯ menu: Edit, Delete, Open on GitHub. Pending if dismissed.
-  showCommentMenu: (can: { delete: boolean; url: string | null }): Promise<"edit" | "delete"> =>
-    ipcRenderer.invoke("menus:comment", can),
+  showCommentMenu: (can: {
+    edit: boolean;
+    delete: boolean;
+    url: string | null;
+  }): Promise<"edit" | "delete"> => ipcRenderer.invoke("menus:comment", can),
   // A pick from a list (the agent pane's session, agent, model, effort): the index of the picked label. Pending if
   // dismissed.
   showPickMenu: (labels: string[], checked: number): Promise<number> =>
@@ -400,8 +465,8 @@ const api = {
   // A workspace's context menu in L1; stays pending if dismissed.
   showWorkspaceMenu: (): Promise<"remove"> => ipcRenderer.invoke("menus:workspace"),
   // A view chip's context menu; pending if dismissed.
-  showViewChipMenu: (): Promise<"remove"> => ipcRenderer.invoke("menus:view-chip"),
   // A view section's menu in the table of contents: Reviewed, checked when all its files are; resolves with the new state.
+  showDiagram: (svg: string): Promise<boolean> => ipcRenderer.invoke("diagram:preview", svg),
   showTocSectionMenu: (reviewed: boolean): Promise<boolean> =>
     ipcRenderer.invoke("menus:toc-section", reviewed),
   // A native confirmation before a destructive action: `action` names its button. True if confirmed.
@@ -413,21 +478,6 @@ const api = {
   // L1's project menu: the project to switch to, or null for Add Project. Pending if dismissed.
   showProjectsMenu: (projects: { id: number; label: string }[]): Promise<number | null> =>
     ipcRenderer.invoke("menus:projects", projects),
-  // The canvas's new view menu: the prompt to attach to the agent pane's composer, or "new-prompt" for New Prompt… (Settings).
-  // Pending if dismissed. range: what the canvas shows, when it isn't all of the workspace's changes.
-  showNewViewMenu: (range: ViewRange | null): Promise<AttachedPrompt | "new-prompt"> =>
-    ipcRenderer.invoke("menus:new-view", range),
-  // The New View prompts: the built-in ones (id null), then the user's own.
-  listPrompts: (): Promise<Prompt[]> => ipcRenderer.invoke("prompts:list"),
-  savePrompt: (title: string, body: string): Promise<void> =>
-    ipcRenderer.invoke("prompts:save", title, body),
-  deletePrompt: (id: number): Promise<void> => ipcRenderer.invoke("prompts:delete", id),
-  // A prompt as the composer attaches it, for the command palette's New View actions; null for New View….
-  attachPrompt: (p: Prompt | null, range: ViewRange | null): Promise<AttachedPrompt> =>
-    ipcRenderer.invoke("prompts:attach", p, range),
-  // Update View, for a stale view: asks the agent to make it again, of the code as it is now.
-  updateViewPrompt: (view: View): Promise<AttachedPrompt> =>
-    ipcRenderer.invoke("prompts:update-view", view),
   onChanged: (callback: (change: Changed) => void) => {
     const listener = (_: unknown, change: Changed) => callback(change);
     ipcRenderer.on("changed", listener);

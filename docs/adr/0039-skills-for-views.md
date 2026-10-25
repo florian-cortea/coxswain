@@ -28,8 +28,8 @@ not for coxswain's view tools, so they need telling how they apply.
    next to the view tools. Each comes with a note first (`src/core/skills.ts`) that says which of its parts apply
    in coxswain and how they map to the tools: `pr` makes a view's overview, `writing-beats`' grounding orders its
    sections, `code-review`'s axes become findings on lines with `add_finding`.
-3. **The view instructions delegate to them** at the step they serve: `start_view`'s result tells a guide to read
-   `pr` and `writing-beats` first, and `code-review` in a review; another view opens the way `pr` opens a summary. What
+3. **The view instructions delegate to them** at the step they serve: `start_view`'s result tells a plain guide to read
+   `writing-beats` for order; an explicitly requested review also reads `pr` and `code-review`. Another view opens the way `pr` opens a summary. What
    coxswain itself says is what only it knows: its fences, its tools, and that a guide's prose is made of claims about
    the code, not instructions to the reviewer.
 4. **The instructions coxswain writes for agents follow `writing-for-agents`**, a skill for whoever edits them, in
@@ -46,7 +46,7 @@ not for coxswain's view tools, so they need telling how they apply.
 
 ## Consequences
 
-- A guide costs one more tool call (both skills at once), and the skills' text is in the agent's context for the turn.
+- An interactive guide costs a skill call, and the skills' text is in the agent's context for the turn.
 - Upstream changes reach coxswain only when someone copies them; the README says from which commit.
 - The notes in `skills.ts` and the skills' own text can disagree (a skill's steps for an issue tracker, its
   sub-agents, an article file); the note says what holds, and it comes first.

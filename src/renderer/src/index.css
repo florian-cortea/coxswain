@@ -1,8 +1,60 @@
 @import "tailwindcss";
+@import "./components/sidebar-row.css";
+@import "./components/sidebar-tree.css";
 
 /* Native scrollbars, checkboxes and text fields follow the system theme (ADR 0004). */
 :root {
   color-scheme: light dark;
+  --review-file-bg: var(--color-white);
+  --review-canvas-bg: var(--color-neutral-50);
+  --review-file-border: color-mix(in srgb, var(--review-file-bg), black 10%);
+  --review-border-width: 0.5px;
+  --reviewed-color: light-dark(#007aff, #9ac7fa);
+  --guide-tree-line: light-dark(
+    color-mix(in srgb, var(--review-canvas-bg), black 24%),
+    var(--review-file-border)
+  );
+  --guide-file-status-strength: 80%;
+  --guide-file-font-size: 0.75rem;
+  --guide-selected-bg: light-dark(rgb(0 0 0 / 5%), rgb(255 255 255 / 5%));
+  --guide-hover-bg: light-dark(
+    color-mix(in srgb, var(--review-canvas-bg), black 8%),
+    var(--color-neutral-800)
+  );
+  --review-gutter: var(--ui-space-6);
+  --review-top-clearance: var(--ui-overlay-clearance);
+  --review-toolbar-top: var(--ui-overlay-offset);
+  --review-content-start: calc(var(--ui-overlay-clearance) + var(--ui-space-3));
+  --review-content-end: var(--review-gutter);
+}
+
+@media (min-width: 1280px) {
+  :root {
+    --review-gutter: calc(var(--ui-space-8) + var(--ui-space-2));
+  }
+}
+
+/* Shared desktop control metrics: content can grow; these are minimum click targets, not fixed heights. */
+.ui-button:not(.ui-button-link),
+.ui-toggle {
+  min-height: var(--ui-control-height);
+  min-width: var(--ui-control-height);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.ui-button-link {
+  min-height: var(--ui-space-6);
+}
+.ui-segment {
+  min-height: var(--ui-space-6);
+}
+.ui-input,
+.ui-list-row {
+  min-height: var(--ui-field-height);
+}
+.ui-card {
+  padding: var(--ui-space-4);
 }
 
 html,
@@ -20,9 +72,337 @@ body {
 }
 
 @media (prefers-color-scheme: dark) {
+  :root {
+    --review-file-bg: var(--color-neutral-900);
+    --review-canvas-bg: var(--color-neutral-950);
+    --review-file-border: color-mix(in srgb, var(--review-file-bg), white 9%);
+  }
   body {
     background: var(--color-neutral-900);
     color: var(--color-neutral-100);
+  }
+}
+
+/* Soft Dark samples the reference's charcoal canvas, cards, text and dividers.
+   Override the shared neutral ramp so every pane, control and dialog follows it. */
+:root[data-appearance="soft-dark"] {
+  color-scheme: dark;
+  --color-neutral-950: #1f2023;
+  --color-neutral-900: #28292c;
+  --color-neutral-800: #313338;
+  --color-neutral-700: #414349;
+  --color-neutral-600: #6b6d73;
+  --color-neutral-500: #85878d;
+  --color-neutral-400: #a1a2a6;
+  --color-neutral-300: #c6c7cb;
+  --color-neutral-200: #dedfe3;
+  --color-neutral-100: #e5e6e9;
+  --color-neutral-50: #f4f4f5;
+  --review-file-bg: #28292c;
+  --review-canvas-bg: #1f2023;
+  --review-file-border: #36373b;
+}
+:root[data-appearance="soft-dark"] .workspace-sidebar {
+  background: #1f2023;
+}
+:root[data-appearance="soft-dark"] .workspace-bar:not(.workspace-bar-native) {
+  background: #28292ce6;
+}
+:root[data-appearance="soft-dark"] .workspace-tabs {
+  background: #28292c;
+}
+/* Keep the section's scroll affordance quiet, including while macOS expands it on hover. */
+.guide-section-content::-webkit-scrollbar {
+  width: 10px;
+  background: transparent;
+}
+.guide-section-content::-webkit-scrollbar-track,
+.guide-section-content::-webkit-scrollbar-corner {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+.guide-section-content::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  background-clip: padding-box;
+  border: 3px solid transparent;
+  border-radius: 999px;
+}
+.guide-section-content[data-scrolling="true"]::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--color-neutral-500) 60%, transparent);
+}
+:root[data-appearance="soft-dark"] .web-toolbar {
+  background: #28292ce6;
+  border-color: #36373b;
+}
+
+/* A Safari-style compact strip: tabs share the space equally. */
+.workspace-sidebar {
+  background: light-dark(#f5f5f5, #1e1e1e);
+  border-color: var(--review-file-border);
+}
+.workspace-sidebar .window-chrome {
+  border-bottom: 0;
+  background: transparent;
+  padding-inline: 12px;
+}
+.workspace-shell {
+  --review-top-clearance: calc(var(--ui-toolbar-height) + var(--review-gutter));
+  --review-toolbar-top: calc(var(--ui-toolbar-height) + var(--ui-overlay-offset));
+  --review-content-start: var(--review-top-clearance);
+}
+.workspace-shell > .workspace-bar {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 45;
+}
+.workspace-bar {
+  border-bottom-width: var(--review-border-width);
+  border-color: var(--review-file-border);
+  background: light-dark(#ffffffd9, #171717d9);
+  backdrop-filter: blur(18px);
+}
+.workspace-bar-native {
+  background: transparent;
+  backdrop-filter: none;
+  zoom: calc(1 / var(--window-zoom, 1));
+  height: 44px;
+}
+[data-window-material="glass"] .workspace-shell {
+  --ui-toolbar-height: var(--native-toolbar-height, 44px);
+}
+.workspace-actions {
+  height: 32px;
+  border-radius: 999px;
+  background: light-dark(#ffffff66, #ffffff0d);
+  border: var(--review-border-width) solid var(--review-file-border);
+}
+.workspace-actions .ui-button,
+.workspace-actions .ui-toggle {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+}
+.workspace-project.ui-button {
+  border-radius: 999px;
+  border: var(--review-border-width) solid var(--review-file-border);
+}
+.workspace-tabs {
+  height: 32px;
+  padding: 2px;
+  border-radius: 999px;
+  background: light-dark(#e8e8e8, #262626);
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+}
+.workspace-tabs::-webkit-scrollbar {
+  display: none;
+}
+.workspace-tab-wrap {
+  flex: 1 0 0;
+  min-width: 96px;
+}
+.workspace-tab-wrap .workspace-tab.ui-button {
+  min-width: 0;
+  width: 100%;
+}
+.workspace-tab-close.ui-button {
+  position: absolute;
+  top: 4px;
+  left: 6px;
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  min-height: 20px;
+  border-radius: 999px;
+  opacity: 0;
+  pointer-events: none;
+}
+.workspace-tab-wrap:hover .workspace-tab-close,
+.workspace-tab-wrap:focus-within .workspace-tab-close {
+  opacity: 1;
+  pointer-events: auto;
+}
+.workspace-tab-wrap:hover .workspace-tab-icon,
+.workspace-tab-wrap:focus-within .workspace-tab-icon {
+  opacity: 0;
+}
+.workspace-tab-wrap:last-child .workspace-tab::after,
+.workspace-tab-wrap:has(+ .workspace-tab-wrap [aria-selected="true"]) .workspace-tab::after {
+  display: none;
+}
+.workspace-tab.ui-button {
+  height: 28px;
+  min-width: 96px;
+  flex: 1 0 0;
+  border-radius: 999px;
+  background: transparent;
+}
+.workspace-tab::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 7px;
+  bottom: 7px;
+  width: var(--review-border-width);
+  background: light-dark(#bfbfbf, #525252);
+}
+.workspace-tab:last-child::after,
+.workspace-tab[aria-selected="true"]::after,
+.workspace-tab:has(+ [aria-selected="true"])::after {
+  display: none;
+}
+.workspace-tab.ui-button:hover {
+  background: light-dark(#ffffff66, #ffffff0d);
+}
+.workspace-tab.ui-button[aria-selected="true"] {
+  background: light-dark(#ffffff, #454545);
+  color: light-dark(#262626, #f5f5f5);
+  box-shadow:
+    0 1px 3px #00000012,
+    inset 0 0 0 0.5px light-dark(#0000000a, #ffffff12);
+  font-weight: 500;
+}
+.workspace-tab:focus-visible {
+  outline: 2px solid light-dark(#737373, #a3a3a3);
+  outline-offset: -2px;
+}
+
+/* Review controls float over the scrolling page. Native islands supply Liquid Glass on supported macOS;
+   the web fallback uses an in-page frosted surface. The window itself always stays opaque. */
+.review-toolbar {
+  position: absolute;
+  top: var(--review-toolbar-top);
+  left: var(--ui-space-4);
+  right: var(--ui-space-4);
+  z-index: 30;
+}
+/* The sticky header masks only its own card, clipped by the card's overflow. Once its bottom
+   pushes the header upward, the remaining card can pass behind the native toolbar. */
+.review-file-header,
+.review-file-body {
+  border-color: var(--review-file-border);
+  border-width: var(--review-border-width);
+}
+.review-file-body {
+  border-top-width: 0;
+}
+.review-file-header::before {
+  content: "";
+  position: absolute;
+  bottom: calc(100% + var(--review-border-width));
+  left: calc(-1 * var(--review-border-width));
+  right: calc(-1 * var(--review-border-width));
+  height: 100vh;
+  background: var(--review-canvas-bg);
+  pointer-events: none;
+}
+.review-file-corners {
+  position: absolute;
+  left: calc(-1 * var(--review-border-width));
+  right: calc(-1 * var(--review-border-width));
+  height: 12px;
+  pointer-events: none;
+}
+.review-file-corners-top {
+  top: calc(-1 * var(--review-border-width));
+}
+.review-file-corners-bottom {
+  bottom: calc(-1 * var(--review-border-width));
+  transform: scaleY(-1);
+  z-index: 20;
+}
+.review-file-corners svg {
+  position: absolute;
+  top: 0;
+  width: 12px;
+  height: 12px;
+}
+.review-file-corner-left {
+  left: 0;
+}
+.review-file-corner-right {
+  right: 0;
+  transform: scaleX(-1);
+}
+.review-file-body::after {
+  content: "";
+  position: absolute;
+  bottom: calc(-1 * var(--review-border-width));
+  left: 12px;
+  right: 12px;
+  z-index: 20;
+  pointer-events: none;
+  border-bottom: var(--review-border-width) solid var(--review-file-border);
+}
+.review-file-body {
+  position: relative;
+  border-bottom-color: transparent;
+}
+.ui-card,
+.ui-sent-card,
+.review-comment-card,
+.review-prose .mermaid {
+  border-radius: 12px;
+  border: var(--review-border-width) solid var(--review-file-border);
+}
+/* Use the canvas width, so opening either side pane also stacks a guide when needed. */
+.review-canvas {
+  container-type: inline-size;
+}
+.guide-section {
+  scroll-margin-top: var(--review-top-clearance);
+  margin-inline: var(--review-gutter);
+}
+.guide-section-prose-only {
+  width: min(100%, 800px);
+  margin-inline: auto;
+}
+.guide-section-prose-only > :empty {
+  display: none;
+}
+.guide-section-layout {
+  display: grid;
+  gap: var(--ui-space-8);
+  align-items: start;
+}
+@container (min-width: 960px) {
+  .guide-section-with-code {
+    grid-template-columns: minmax(280px, 1fr) minmax(0, 2fr);
+    gap: calc(var(--ui-space-8) + var(--ui-space-2));
+  }
+  .guide-section-with-code .guide-section-explanation {
+    position: sticky;
+    top: var(--review-top-clearance);
+    container-type: scroll-state;
+    container-name: guide-explanation;
+  }
+  .guide-section-with-code .guide-section-content {
+    max-height: calc(100vh - var(--review-top-clearance) - var(--ui-space-4));
+    /* Keep geometry stable; enable wheel/trackpad scrolling only after the parent sticks. */
+    overflow-y: hidden;
+    scrollbar-gutter: stable;
+    padding-right: var(--ui-space-4);
+  }
+}
+@container guide-explanation scroll-state(stuck: top) {
+  .guide-section-with-code .guide-section-content {
+    overflow-y: auto;
+  }
+}
+.web-toolbar {
+  border-radius: 14px;
+  border: 1px solid light-dark(#e5e5e5, #404040);
+  background: light-dark(rgb(255 255 255 / 90%), rgb(23 23 23 / 90%));
+  backdrop-filter: blur(18px);
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .web-toolbar {
+    background: light-dark(#fff, #171717);
+    backdrop-filter: none;
+  }
+  :root[data-appearance="soft-dark"] .web-toolbar {
+    background: #28292c;
   }
 }
 
@@ -130,4 +510,245 @@ body {
 [data-find-revealed] .truncate {
   white-space: normal;
   overflow-wrap: anywhere;
+}
+
+/* Leave room for the draft's corner close control inside its outlined text field. */
+.review-comment-composer[data-cancellable="true"] textarea {
+  padding-right: 44px;
+}
+
+.review-comment-composer textarea {
+  padding: 8px;
+  border-radius: 12px;
+}
+
+.review-guide-file {
+  font-size: var(--guide-file-font-size);
+  line-height: 1rem;
+  justify-content: flex-start;
+}
+
+[id^="diff:"] {
+  scroll-margin-top: var(--review-top-clearance);
+}
+
+/* One geometry and interaction wash for section, file and thread rows. */
+.guide-nav-item {
+  border-radius: 12px;
+}
+.guide-nav-item:hover {
+  background: var(--guide-hover-bg);
+  color: var(--color-neutral-900);
+}
+@media (prefers-color-scheme: dark) {
+  .guide-nav-item:hover {
+    background: var(--color-neutral-800);
+    color: var(--color-neutral-100);
+  }
+}
+.guide-thread-row > button:first-child {
+  border-radius: inherit;
+}
+.guide-thread-row {
+  border: var(--review-border-width) solid
+    color-mix(in srgb, var(--review-file-border), transparent 35%);
+  background-color: color-mix(in srgb, var(--review-file-bg), var(--review-canvas-bg) 45%);
+}
+.guide-thread-row:hover {
+  background-color: var(--guide-hover-bg);
+}
+@media (prefers-color-scheme: dark) {
+  .guide-thread-row:hover {
+    background-color: var(--color-neutral-800);
+  }
+}
+.guide-section-node:has(> .guide-section-children:not(:empty)) > .guide-section-title::after {
+  content: "";
+  position: absolute;
+  left: 16px;
+  top: 28px;
+  bottom: 0;
+  border-left: var(--review-border-width) solid var(--guide-tree-line);
+  pointer-events: none;
+}
+.guide-section-link:hover {
+  background: transparent;
+}
+
+.guide-navigation input[type="checkbox"]:not(:checked):not(:indeterminate) {
+  opacity: 0.45;
+}
+.guide-navigation label:hover input[type="checkbox"]:not(:checked):not(:indeterminate),
+.guide-navigation input[type="checkbox"]:not(:checked):not(:indeterminate):focus-visible {
+  opacity: 0.8;
+}
+
+.activity-popover {
+  border-radius: 12px;
+  border: var(--review-border-width) solid var(--review-file-border);
+  background: var(--review-file-bg);
+}
+.activity-job {
+  border-radius: 12px;
+  border: var(--review-border-width) solid var(--review-file-border);
+  background: color-mix(in srgb, var(--review-file-bg), var(--review-canvas-bg) 45%);
+}
+
+/* Prose threads align with their text column; code-line threads retain the card inset. */
+[data-prose-thread] > .review-comment-card {
+  margin-inline: 0;
+}
+
+.changes-navigation {
+  --sidebar-level-indent: 20px;
+  /* Row padding (8px) + half of the fixed disclosure slot (8px). */
+  --sidebar-parent-axis: 16px;
+}
+.changes-tree-children {
+  padding-left: var(--sidebar-level-indent);
+}
+.changes-navigation .sidebar-tree-branch {
+  --sidebar-branch-left: calc(var(--sidebar-parent-axis) - var(--sidebar-level-indent));
+}
+
+.review-file-disclosure:hover {
+  background-color: transparent;
+}
+.review-file-disclosure > svg {
+  position: absolute;
+  left: var(--review-number-center, 3.5ch);
+  width: 14px;
+  height: 14px;
+  margin-left: -8px;
+}
+
+.file-editor-tabs {
+  min-height: 36px;
+  border-bottom: var(--review-border-width) solid var(--review-file-border);
+  background: var(--review-canvas-bg);
+  scrollbar-width: thin;
+}
+.file-editor-tab {
+  border-right: var(--review-border-width) solid var(--review-file-border);
+  box-shadow: inset 0 -2px transparent;
+}
+.file-editor-tab:hover {
+  background: color-mix(in srgb, var(--review-file-bg) 75%, transparent);
+}
+.file-editor-tab[data-active="true"] {
+  background: var(--review-file-bg);
+  box-shadow: inset 0 -2px var(--color-neutral-500);
+}
+.file-editor-tab .ui-button:hover {
+  background: transparent;
+}
+.file-editor-tab-close {
+  opacity: 0;
+}
+.file-editor-tab:hover .file-editor-tab-close,
+.file-editor-tab:focus-within .file-editor-tab-close,
+.file-editor-tab[data-active="true"] .file-editor-tab-close {
+  opacity: 1;
+}
+.file-editor-view,
+.file-editor-body {
+  background: var(--review-file-bg);
+}
+
+.pr-overview {
+  background: var(--review-canvas-bg);
+}
+.pr-overview .pr-overview-card {
+  padding: var(--ui-space-6);
+  background: var(--review-file-bg);
+}
+.pr-overview-side + .pr-overview-side {
+  padding-top: var(--ui-space-4);
+  border-top: var(--review-border-width) solid var(--review-file-border);
+}
+.pr-overview-check {
+  padding-block: var(--ui-space-2);
+}
+.pr-overview-check + .pr-overview-check {
+  border-top: var(--review-border-width) solid var(--review-file-border);
+}
+.pr-overview textarea {
+  border-radius: 12px;
+  padding: var(--ui-space-3);
+}
+.pr-overview .markdown {
+  line-height: 1.55;
+}
+.pr-overview .markdown > * + * {
+  margin-top: var(--ui-space-4);
+}
+.review-prose .mermaid {
+  padding: var(--ui-space-4);
+  background: var(--review-file-bg);
+}
+.markdown img {
+  display: inline-block;
+  max-width: 100%;
+  height: auto;
+  vertical-align: middle;
+}
+
+/* Shared modal hierarchy: elevated surface, quiet fields, and a distinct action area. */
+.ui-dialog-backdrop {
+  background: light-dark(rgb(25 28 35 / 20%), rgb(0 0 0 / 38%));
+  backdrop-filter: blur(5px);
+}
+.ui-dialog {
+  border-radius: 20px;
+  border-color: color-mix(in srgb, var(--review-file-bg), currentColor 15%);
+  background: var(--review-file-bg);
+  box-shadow:
+    0 24px 80px rgb(0 0 0 / 24%),
+    0 2px 8px rgb(0 0 0 / 8%);
+}
+.ui-dialog-header {
+  padding: 24px 24px 20px;
+}
+.ui-dialog-body {
+  padding: 0 24px 24px;
+  scrollbar-gutter: stable;
+}
+.ui-dialog-footer {
+  padding: 16px 24px;
+  border-top: var(--review-border-width) solid var(--review-file-border);
+  background: color-mix(in srgb, var(--review-file-bg), var(--review-canvas-bg) 45%);
+}
+.ui-dialog textarea,
+.ui-dialog .ui-input {
+  border-radius: 12px;
+  border-color: color-mix(in srgb, var(--review-file-bg), currentColor 20%);
+  background: color-mix(in srgb, var(--review-file-bg), var(--review-canvas-bg) 65%);
+  font-size: 13px;
+  line-height: 1.55;
+}
+.ui-dialog textarea:focus,
+.ui-dialog .ui-input:focus {
+  border-color: var(--reviewed-color);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--reviewed-color), transparent 85%);
+}
+.ui-dialog .ui-button:not(.ui-button-ghost) {
+  min-height: 32px;
+  border-radius: 8px;
+  padding-inline: 14px;
+  font-size: 13px;
+}
+.ui-dialog-close svg {
+  width: 14px;
+  height: 14px;
+}
+.ui-dialog.ui-review-dialog {
+  max-width: 760px;
+}
+.ui-dialog-thread,
+.ui-dialog-empty {
+  border-color: var(--review-file-border);
+  background: var(--review-canvas-bg);
+}
+.ui-review-summary {
+  padding: 0 24px 24px;
 }

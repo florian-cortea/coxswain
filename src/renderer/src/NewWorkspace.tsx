@@ -95,7 +95,9 @@ export function NewWorkspace({
         />
       </form>
       {name && !exists && (
-        <div className={cn("flex shrink-0 items-center gap-2 border-b px-4 py-2.5", divider)}>
+        <div
+          className={cn("flex shrink-0 flex-wrap items-center gap-2 border-b px-5 py-3", divider)}
+        >
           <span className="min-w-0 flex-1 truncate">
             <span className={muted}>New branch</span>{" "}
             <span className="font-mono text-[12px] font-medium">{name}</span>

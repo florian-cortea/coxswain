@@ -123,3 +123,5 @@ PR; the branch, not the workspace, is what ties them. Writing to GitHub must alw
 - Threads posted before the link was kept were resolved here, and their comments came back as threads of their own;
   they stay unlinked.
 - Threads are mirrored only once the worktree is open, since they're anchored there.
+
+The PR overview shares review-card surfaces, spacing and typography with Guide, and uses the same Prose/Mermaid renderer and native diagram preview. Repository-relative Markdown images read the PR head through the existing core readFileAt API and query cache; no renderer filesystem access or additional image-fetching core service is added. GitHub blob image URLs normalize to raw URLs. HTTPS image sources are permitted by the renderer’s img-src CSP (default/script sources remain restricted), since PR descriptions and bot comments include badges and attachments beyond avatar hosts. Failed image loads retain a muted accessible label and source tooltip.

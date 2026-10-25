@@ -1,0 +1,136 @@
+{
+  "features": ["refractivity"],
+  "fill": {
+    "linear-gradient": [
+      "srgb:0.05000,0.08000,0.13000,1.00000",
+      "srgb:0.02000,0.03500,0.06500,1.00000"
+    ]
+  },
+  "groups": [
+    {
+      "layers": [
+        {
+          "glass": true,
+          "image-name": "01-spine.svg",
+          "name": "spine",
+          "opacity": 0.84
+        }
+      ],
+      "name": "Glass spine",
+      "opacity": 1,
+      "refractivity": {
+        "depth": 0.24,
+        "enabled": true,
+        "strength": -0.025
+      },
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.28
+      },
+      "specular": true,
+      "translucency": {
+        "enabled": true,
+        "value": 0.3
+      }
+    },
+    {
+      "layers": [
+        {
+          "fill": {
+            "linear-gradient": [
+              "srgb:0.90000,0.98000,1.00000,0.95000",
+              "srgb:0.38000,0.80000,0.98000,0.65000"
+            ]
+          },
+          "glass": true,
+          "image-name": "02-oars.svg",
+          "name": "oars-1",
+          "opacity": 1
+        }
+      ],
+      "name": "Rounded glass paddles 1",
+      "opacity": 1,
+      "refractivity": {
+        "depth": 0.24,
+        "enabled": true,
+        "strength": -0.015
+      },
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.28
+      },
+      "specular": true,
+      "translucency": {
+        "enabled": true,
+        "value": 0.42
+      }
+    },
+    {
+      "layers": [
+        {
+          "fill": {
+            "linear-gradient": [
+              "srgb:0.34000,0.94000,1.00000,0.95000",
+              "srgb:0.13000,0.60000,0.92000,0.75000"
+            ]
+          },
+          "glass": true,
+          "image-name": "03-oars.svg",
+          "name": "oars-2",
+          "opacity": 1
+        }
+      ],
+      "name": "Rounded glass paddles 2",
+      "opacity": 1,
+      "refractivity": {
+        "depth": 0.24,
+        "enabled": true,
+        "strength": -0.015
+      },
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.28
+      },
+      "specular": true,
+      "translucency": {
+        "enabled": true,
+        "value": 0.45
+      }
+    },
+    {
+      "layers": [
+        {
+          "fill": {
+            "linear-gradient": [
+              "srgb:0.24000,0.86000,1.00000,0.90000",
+              "srgb:0.10000,0.42000,0.92000,0.62000"
+            ]
+          },
+          "glass": true,
+          "image-name": "04-oars.svg",
+          "name": "oars-3",
+          "opacity": 1
+        }
+      ],
+      "name": "Rounded glass paddles 3",
+      "opacity": 1,
+      "refractivity": {
+        "depth": 0.24,
+        "enabled": true,
+        "strength": -0.015
+      },
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.28
+      },
+      "specular": true,
+      "translucency": {
+        "enabled": true,
+        "value": 0.45
+      }
+    }
+  ],
+  "supported-platforms": {
+    "squares": "shared"
+  }
+}

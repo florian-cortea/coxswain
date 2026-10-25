@@ -93,6 +93,9 @@ type Draft = ProseAnchor & Place;
 
 // A view section's threads on its prose, around the section's parts (children), which render ViewProse.
 export function ProseThreads(props: {
+  revealThread?: number;
+  revealVersion?: number;
+  onThreadResolved?: (id: number) => void;
   workspaceId: number;
   canPost: boolean; // the workspace has a PR, for Post to GitHub
   viewId: number;
@@ -171,6 +174,9 @@ export function ProseThreads(props: {
   );
   const thread = (e: ReviewEntry) => (
     <EntryThread
+      revealed={props.revealThread === e.id}
+      revealVersion={props.revealVersion}
+      onResolved={props.onThreadResolved}
       key={e.id}
       root={e}
       entries={entries}
@@ -212,7 +218,7 @@ export function ProseThreads(props: {
   return (
     <div ref={root} onContextMenu={onContextMenu}>
       {unplaced.length > 0 && (
-        <div data-prose-thread className="max-w-[72ch] px-6 select-none">
+        <div data-prose-thread className="max-w-[72ch] select-none">
           {unplaced.map(thread)}
         </div>
       )}

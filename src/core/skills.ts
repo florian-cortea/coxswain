@@ -13,23 +13,16 @@ let dir = join(process.cwd(), "resources", "skills");
 export const setSkillsDir = (path: string) => void (dir = path);
 
 const inCoxswain: Record<SkillName, string> = {
-  pr: `Here the skill shapes a view's overview, its first section, written with write_section, and not a PR body. Use its
-Summary and Merge Danger, and its Evidence where the change carries its own proof: name the test that fails without
-the change and what it checks. Give the section a heading of your own that says what the change does; the skill's
-section names may be bold labels in it. The visuals are markdown in the section: pseudocode, trees and shaped diffs as
-\`\`\`text or \`\`\`diff blocks without path=, diagrams as \`\`\`mermaid blocks. A view is a narrow column: keep a
-sketch's lines short (about 60 characters), and say what a line means in the sentences around the sketch rather than
-in a comment at its end. A shaped diff shows its + lines green and its - lines red. The user's domain language is the
-repository's glossary when it has one (GLOSSARY.md, CONTEXT.md, a glossary under docs/), and the code's own names
-otherwise. The reviewer reads the overview before any diff, so it carries what the diffs can't show: the intent, the
-shape and the danger.`,
+  pr: `Here use this skill's overview and risk guidance for an explicitly requested review or PR summary. A plain guide stays
+concise: short thematic headings and one or two sentences explaining intent and behavior beside the embedded code.
+Keep code snippets, pseudocode and shaped diffs in the file cards. Use the repository's domain language.`,
   "writing-beats": `Here only the skill's Grounding section applies: it orders a view's sections, which are its beats. The audience
 knows the codebase but not this change; the overview grounds the change's intent and its new terms. Order the
 sections so each leans only on concepts the overview or an earlier section grounded, and grounds what the later ones
 need. You plan the whole order yourself, in one go: the journey with the user and the article file are for writing
 articles.`,
   "code-review": `Here a review is a guide with findings, so the skill's two axes become findings on lines. The fixed point is the
-view's base, and the diff is the one start_view gave you. The spec is the PR's title, description and the issues it
+view's base, and the diff is the one start_guide gave you. The spec is the PR's title, description and the issues it
 links (\`gh pr view --json title,body,closingIssuesReferences\`), or the commits' messages for a branch without a PR;
 it needs no setup or issue-tracker file. The standards are the repository's own documents (AGENTS.md, CLAUDE.md,
 CONTRIBUTING.md, ADRs) plus the smell baseline. Add each finding with add_finding on the lines it's about, starting

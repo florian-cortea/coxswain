@@ -8,7 +8,7 @@ import { version } from "./package.json";
 const commit = execFileSync("git", ["rev-parse", "--short", "HEAD"], { encoding: "utf8" }).trim();
 
 export default defineConfig({
-  main: {},
+  main: { build: { rollupOptions: { external: ["electron-glasskit"] } } },
   preload: {},
   renderer: {
     plugins: [react(), tailwindcss()],

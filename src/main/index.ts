@@ -5,6 +5,7 @@ import {
   dialog,
   ipcMain,
   Menu,
+  nativeTheme,
   shell,
   type WebContents,
 } from "electron";
@@ -13,6 +14,12 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { sidebarFilterItems } from "./sidebar-menu";
+import type { ChangesMenuResult } from "../preload";
+import { recordInteractions } from "./performance";
+import { showDiagram } from "./diagram-preview";
+import { alignWindowButtons, windowButtonPosition } from "./window-chrome";
+import { attachLiquidGlass, loadLiquidGlass } from "./liquid-glass";
 import icon from "../../resources/icon.png?asset";
 import {
   type Agent,
@@ -47,6 +54,14 @@ import {
   steerQueued,
   unqueue,
 } from "../core/agents";
+import {
+  getAppearance,
+  setAppearance,
+  getCodeTheme,
+  setCodeTheme,
+  type CodeTheme,
+  type Appearance,
+} from "../core/appearance";
 import { openDatabase } from "../core/db";
 import {
   prepareAttachments,
@@ -77,22 +92,7 @@ import {
   watchWorkspace,
   windowFocused,
 } from "../core/watch";
-import {
-  listViews,
-  onViewChange,
-  removeView,
-  setDiagramCheck,
-  type AttachedPrompt,
-  attachPrompt,
-  updateViewPrompt,
-  customPrompt,
-  deletePrompt,
-  listPrompts,
-  type Prompt,
-  savePrompt,
-  type View,
-  type ViewRange,
-} from "../core/views";
+import { listViews, onViewChange, setDiagramCheck, type AttachedPrompt } from "../core/views";
 import {
   type Check,
   getCurrentUser,
@@ -130,24 +130,25 @@ import {
   stopQuestion,
 } from "../core/review";
 import { listReviewed, setReviewed } from "../core/reviewed";
+import { type GuideAuthor } from "../shared/guide-authors";
+import {
+  getGuideInstructions,
+  requestGuide,
+  getGuideSettings,
+  setGuideSettings,
+  type GuideSettings,
+  type GuideOverride,
+} from "../core/guides";
 import { startBackground } from "../core/background";
 import { setSkillsDir } from "../core/skills";
 import { emit, onEvent } from "../core/events";
-import {
-  getSummarySettings,
-  listJobs,
-  onJobs,
-  setSummaryRunner,
-  setSummarySettings,
-  stopInterruptedJobs,
-  stopJob,
-  type SummarySettings,
-} from "../core/jobs";
-import { summaryCoverage } from "../core/summaries";
+import { listJobs, onJobs, setSummaryRunner, stopInterruptedJobs, stopJob } from "../core/jobs";
 import { checkSetup } from "../core/setup";
-import type { Layers, RangePick, ViewSettings } from "../preload";
+import type { Layers, RangePick, ViewSettings, SettingsMenuResult, GuideOptions } from "../preload";
 import {
   listWorkspaces,
+  getClosedWorkspaceTabs,
+  setWorkspaceTabOpen,
   openBranchWorkspace,
   openPullRequestWorkspace,
   openWorkspace,
@@ -178,6 +179,7 @@ if (app.isPackaged && process.platform !== "win32") {
 }
 
 function createWindow() {
+  const glass = loadLiquidGlass();
   const win = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -185,9 +187,17 @@ function createWindow() {
     minHeight: 500,
     show: false,
     titleBarStyle: "hiddenInset",
+    // Native 14-point buttons, centered in the 44-point workspace bar.
+    trafficLightPosition: windowButtonPosition,
+    transparent: false,
     icon, // Windows and Linux; macOS takes the Dock icon below
     webPreferences: { preload: join(__dirname, "../preload/index.js") },
   });
+  attachLiquidGlass(win, glass);
+  if (process.platform === "darwin") {
+    win.setWindowButtonVisibility(true);
+    alignWindowButtons(win);
+  }
   win.once("ready-to-show", () => win.show());
   // ADR 0030: coming back to the window rereads the worktree and checks GitHub.
   win.on("focus", windowFocused);
@@ -315,7 +325,12 @@ const menu = Menu.buildFromTemplate([
         click: () => runAction("open-quickly"),
       },
       { type: "separator" },
-      { role: "close" },
+      {
+        label: "Close Workspace Tab",
+        accelerator: "CmdOrCtrl+W",
+        click: () => runAction("close-workspace-tab"),
+      },
+      { role: "close", accelerator: "CmdOrCtrl+Shift+W" },
     ],
   },
   {
@@ -368,6 +383,27 @@ const menu = Menu.buildFromTemplate([
         click: () => runAction("forward"),
       },
       { type: "separator" },
+      {
+        label: "Workspaces",
+        submenu: [
+          {
+            label: "Next Workspace",
+            accelerator: "Ctrl+Tab",
+            click: () => runAction("next-workspace"),
+          },
+          {
+            label: "Previous Workspace",
+            accelerator: "Ctrl+Shift+Tab",
+            click: () => runAction("previous-workspace"),
+          },
+          { type: "separator" },
+          ...Array.from({ length: 9 }, (_, i) => ({
+            label: i === 8 ? "Last Workspace" : `Workspace ${i + 1}`,
+            accelerator: `CmdOrCtrl+${i + 1}`,
+            click: () => runAction(`workspace-${i + 1}`),
+          })),
+        ],
+      },
       { role: "reload" },
       {
         id: "rebuild",
@@ -389,7 +425,11 @@ const menu = Menu.buildFromTemplate([
   { role: "windowMenu" },
 ]);
 
-app.whenReady().then(() => {
+// Soft Dark changes the app palette while keeping native controls and media queries in dark mode.
+const nativeAppearance = (value: Appearance) => (value === "soft-dark" ? "dark" : value);
+
+app.whenReady().then(async () => {
+  await recordInteractions();
   // Packaged builds carry the icon in the bundle; this is for `pnpm dev`, which runs Electron's own.
   app.dock?.setIcon(icon);
   Menu.setApplicationMenu(menu);
@@ -398,6 +438,20 @@ app.whenReady().then(() => {
     menu.getMenuItemById("forward")!.enabled = canForward;
   });
   const db = openDatabase(join(app.getPath("userData"), "coxswain.db"));
+  // Apply before creating a window so a saved override is used from the first frame.
+  nativeTheme.themeSource = nativeAppearance(await getAppearance(db));
+  ipcMain.handle("diagram:preview", (e, svg: string) => {
+    const parent = BrowserWindow.fromWebContents(e.sender);
+    return parent ? showDiagram(parent, svg) : false;
+  });
+  ipcMain.handle("settings:code-theme", () => getCodeTheme(db));
+  ipcMain.handle("settings:set-code-theme", async (_, value: CodeTheme) => {
+    await setCodeTheme(db, value);
+  });
+  ipcMain.handle("settings:appearance", () => getAppearance(db));
+  ipcMain.handle("settings:set-appearance", async (_, value: Appearance) => {
+    nativeTheme.themeSource = nativeAppearance(await setAppearance(db, value));
+  });
   ipcMain.handle("setup:check", () => checkSetup());
   ipcMain.handle("projects:list", () => listProjects(db));
   ipcMain.handle("projects:open", (_, projectId: number) => openProject(db, projectId));
@@ -430,6 +484,10 @@ app.whenReady().then(() => {
   );
   ipcMain.handle("github:pull-titles", (_, owner: string, name: string, numbers: number[]) =>
     listPullRequestTitles(owner, name, numbers),
+  );
+  ipcMain.handle("workspaces:closed-tabs", () => getClosedWorkspaceTabs(db));
+  ipcMain.handle("workspaces:tab-open", (_, workspaceId: number, open: boolean) =>
+    setWorkspaceTabOpen(db, workspaceId, open),
   );
   ipcMain.handle("workspaces:list", (_, projectId: number) => listWorkspaces(db, projectId));
   ipcMain.handle("workspaces:open", (_, workspaceId: number) => openWorkspace(db, workspaceId));
@@ -517,8 +575,8 @@ app.whenReady().then(() => {
   ipcMain.handle("agents:pane-open", () => getAgentPaneOpen(db));
   ipcMain.handle("agents:sign-in", (_, agent: Agent) => signIn(agent));
   ipcMain.handle("agents:set-pane-open", (_, open: boolean) => setAgentPaneOpen(db, open));
-  ipcMain.handle("agents:picks", (_, workspaceId: number, agent: Agent) =>
-    listAgentPicks(db, workspaceId, agent),
+  ipcMain.handle("agents:picks", (_, workspaceId: number, agent: Agent, model?: string) =>
+    listAgentPicks(db, workspaceId, agent, model),
   );
   ipcMain.handle("agents:set-pick", (_, agent: Agent, pick: Pick, value: string) =>
     setAgentPick(db, agent, pick, value),
@@ -717,10 +775,17 @@ app.whenReady().then(() => {
     // delete: "others", not while others have replied, which GitHub keeps; their comments aren't the user's to delete.
     (
       e,
-      can: { send: boolean; summarize: boolean; delete: boolean | "others"; url: string | null },
+      can: {
+        edit: boolean;
+        send: boolean;
+        summarize: boolean;
+        delete: boolean | "others";
+        url: string | null;
+      },
     ) =>
-      new Promise<"delete" | "send" | "summarize">((resolve) =>
+      new Promise<"edit" | "delete" | "send" | "summarize">((resolve) =>
         Menu.buildFromTemplate([
+          ...(can.edit ? [{ label: "Edit", click: () => resolve("edit") }] : []),
           {
             label:
               can.delete === "others" ? "Delete Thread (others have replied)" : "Delete Thread",
@@ -743,16 +808,139 @@ app.whenReady().then(() => {
   // One of the user's comments' ⋯ menu, resolving like the thread's.
   ipcMain.handle(
     "menus:comment",
-    (e, can: { delete: boolean; url: string | null }) =>
+    (e, can: { edit: boolean; delete: boolean; url: string | null }) =>
       new Promise<"edit" | "delete">((resolve) =>
         Menu.buildFromTemplate([
-          { label: "Edit", click: () => resolve("edit") },
+          ...(can.edit ? [{ label: "Edit", click: () => resolve("edit") }] : []),
           { label: "Delete", enabled: can.delete, click: () => resolve("delete") },
           ...(can.url
             ? [{ label: "Open on GitHub", click: () => void shell.openExternal(can.url!) }]
             : []),
         ]).popup({ window: BrowserWindow.fromWebContents(e.sender) ?? undefined }),
       ),
+  );
+  ipcMain.handle("menus:settings", async (e, s: ViewSettings) => {
+    const appearance = await getAppearance(db);
+    const codeTheme = await getCodeTheme(db);
+    return new Promise<SettingsMenuResult>((resolve) => {
+      const display = (settings: ViewSettings) => resolve({ kind: "display", settings });
+      Menu.buildFromTemplate([
+        {
+          label: "App Settings…",
+          accelerator: "CmdOrCtrl+,",
+          click: () => resolve({ kind: "app" }),
+        },
+        { type: "separator" },
+        {
+          label: "Appearance",
+          submenu: (["system", "light", "dark", "soft-dark"] as const).map((value) => ({
+            label: value === "soft-dark" ? "Soft Dark" : value[0].toUpperCase() + value.slice(1),
+            type: "radio" as const,
+            checked: appearance === value,
+            click: async () => {
+              nativeTheme.themeSource = nativeAppearance(await setAppearance(db, value));
+              resolve({ kind: "dismissed" });
+            },
+          })),
+        },
+        {
+          label: "Code Theme",
+          submenu: (
+            [
+              { value: "default", label: "Default" },
+              { value: "one-dark", label: "One Dark (reference)" },
+              { value: "github", label: "GitHub" },
+              { value: "catppuccin", label: "Catppuccin" },
+            ] as const
+          ).map(({ value, label }) => ({
+            label,
+            type: "radio" as const,
+            checked: codeTheme === value,
+            click: async () => {
+              await setCodeTheme(db, value);
+              resolve({ kind: "dismissed" });
+            },
+          })),
+        },
+        {
+          label: "Diff Layout",
+          submenu: (["unified", "split"] as const).map((value) => ({
+            label: value === "unified" ? "Unified" : "Split",
+            type: "radio" as const,
+            checked: s.diffStyle === value,
+            click: () => display({ ...s, diffStyle: value }),
+          })),
+        },
+      ]).popup({
+        window: BrowserWindow.fromWebContents(e.sender) ?? undefined,
+        callback: () => resolve({ kind: "dismissed" }),
+      });
+    });
+  });
+  ipcMain.handle(
+    "menus:guide",
+    (e, options: GuideOptions, authors: GuideAuthor[]) =>
+      new Promise<GuideOptions | "update" | null>((resolve) => {
+        Menu.buildFromTemplate([
+          { label: "Update Guide", click: () => resolve("update") },
+          { type: "separator" },
+          ...sidebarFilterItems(options, authors, resolve),
+        ]).popup({
+          window: BrowserWindow.fromWebContents(e.sender) ?? undefined,
+          callback: () => resolve(null),
+        });
+      }),
+  );
+  ipcMain.handle(
+    "menus:changes",
+    (e, options: GuideOptions, authors: GuideAuthor[], layout: "tree" | "list", grouped: boolean) =>
+      new Promise<ChangesMenuResult | null>((resolve) => {
+        Menu.buildFromTemplate([
+          ...sidebarFilterItems(options, authors, (options) =>
+            resolve({ kind: "filters", options }),
+          ),
+          { type: "separator" },
+          {
+            label: "Group by Implementation, Tests and Generated",
+            type: "checkbox",
+            checked: grouped,
+            click: () => resolve({ kind: "grouping", enabled: !grouped }),
+          },
+          ...(["tree", "list"] as const).map((value) => ({
+            label: value === "tree" ? "Files as Tree" : "Files as List",
+            type: "radio" as const,
+            checked: layout === value,
+            click: () => resolve({ kind: "layout", layout: value }),
+          })),
+        ]).popup({
+          window: BrowserWindow.fromWebContents(e.sender) ?? undefined,
+          callback: () => resolve(null),
+        });
+      }),
+  );
+  ipcMain.handle(
+    "menus:files",
+    (e, settings: ViewSettings) =>
+      new Promise<ViewSettings | null>((resolve) => {
+        Menu.buildFromTemplate([
+          {
+            label: "Show Reviewed Files",
+            type: "checkbox",
+            checked: settings.showReviewed,
+            click: () => resolve({ ...settings, showReviewed: !settings.showReviewed }),
+          },
+          { type: "separator" },
+          ...(["tree", "list"] as const).map((layout) => ({
+            label: layout === "tree" ? "Files as Tree" : "Files as List",
+            type: "radio" as const,
+            checked: settings.layout === layout,
+            click: () => resolve({ ...settings, layout }),
+          })),
+        ]).popup({
+          window: BrowserWindow.fromWebContents(e.sender) ?? undefined,
+          callback: () => resolve(null),
+        });
+      }),
   );
   ipcMain.handle(
     "menus:view",
@@ -770,13 +958,6 @@ app.whenReady().then(() => {
             type: "radio",
             checked: s.diffStyle === "split",
             click: () => resolve({ ...s, diffStyle: "split" }),
-          },
-          { type: "separator" },
-          {
-            label: "Show Reviewed Files",
-            type: "checkbox",
-            checked: s.showReviewed,
-            click: () => resolve({ ...s, showReviewed: !s.showReviewed }),
           },
           { type: "separator" },
           {
@@ -933,17 +1114,6 @@ app.whenReady().then(() => {
       })),
   );
   ipcMain.handle("views:list", (_, workspaceId: number) => listViews(db, workspaceId));
-  ipcMain.handle("views:remove", (_, viewId: number) => removeView(db, viewId));
-  // A view chip's context menu in the canvas bar. Resolves only on a click, like the menus above.
-  ipcMain.handle(
-    "menus:view-chip",
-    (e) =>
-      new Promise<"remove">((resolve) =>
-        Menu.buildFromTemplate([{ label: "Remove View…", click: () => resolve("remove") }]).popup({
-          window: BrowserWindow.fromWebContents(e.sender) ?? undefined,
-        }),
-      ),
-  );
   // A section's context menu in a view's table of contents. Resolves with whether to mark its files reviewed, only on
   // a click, like the menus above.
   ipcMain.handle(
@@ -960,56 +1130,32 @@ app.whenReady().then(() => {
         ]).popup({ window: BrowserWindow.fromWebContents(e.sender) ?? undefined }),
       ),
   );
-  ipcMain.handle("prompts:list", () => listPrompts(db));
-  ipcMain.handle("prompts:save", (_, title: string, body: string) => savePrompt(db, title, body));
-  ipcMain.handle("prompts:delete", (_, id: number) => deletePrompt(db, id));
-  ipcMain.handle("prompts:attach", (_, p: Prompt | null, range: ViewRange | null) =>
-    attachPrompt(p ?? customPrompt, range),
-  );
-  ipcMain.handle("prompts:update-view", (_, v: View) => updateViewPrompt(v));
-  // The canvas's New View menu: the built-in prompts, the user's own, New View… and New Prompt…. Resolves with the
-  // prompt to attach to the agent pane's composer, or "new-prompt"; only on a click, like the menus above.
-  ipcMain.handle("menus:new-view", async (e, range: ViewRange | null) => {
-    const prompts = await listPrompts(db);
-    return new Promise<AttachedPrompt | "new-prompt">((resolve) => {
-      const item = (p: Prompt, label = p.title) => ({
-        label,
-        click: () => resolve(attachPrompt(p, range)),
-      });
-      const saved = prompts.filter((p) => p.id !== null);
-      Menu.buildFromTemplate([
-        ...(range
-          ? [{ label: `Of ${range.what}`, enabled: false }, { type: "separator" as const }]
-          : []),
-        ...prompts.filter((p) => p.id === null).map((p) => item(p)),
-        ...(saved.length ? [{ type: "separator" as const }, ...saved.map((p) => item(p))] : []),
-        { type: "separator" },
-        item(customPrompt, "New View…"),
-        { label: "New Prompt…", click: () => resolve("new-prompt") },
-      ]).popup({ window: BrowserWindow.fromWebContents(e.sender) ?? undefined });
-    });
-  });
-  // ADR 0038: what the core changed goes to the UI, so it refetches that (ADR 0017), and starts the background work
-  // that follows from it. Jobs run on the summary agent, one-shot; Activity shows them as they change.
   onEvent((change) => {
     if (change.what === "opened") return;
     for (const w of BrowserWindow.getAllWindows())
       if (!w.webContents.isDestroyed()) w.webContents.send("changed", change);
   });
   startBackground(db);
-  setSummaryRunner(({ agent, ...o }) => askOnce(agent, o));
-  // ADR 0039: the skills ship in the app's resources, next to the built main process's folder.
+  setSummaryRunner(({ agent, ...options }) => askOnce(agent, options));
   setSkillsDir(join(__dirname, "../../resources/skills"));
   void stopInterruptedJobs(db);
+  ipcMain.handle(
+    "guides:regenerate",
+    (_, workspaceId: number, instructions?: string, override?: GuideOverride) =>
+      requestGuide(db, workspaceId, instructions, override),
+  );
   ipcMain.handle("jobs:list", () => listJobs(db));
-  ipcMain.handle("summaries:coverage", (_, workspaceId: number) =>
-    summaryCoverage(db, workspaceId),
-  );
   ipcMain.handle("jobs:stop", (_, id: number) => stopJob(id));
-  ipcMain.handle("summaries:settings", () => getSummarySettings(db));
-  ipcMain.handle("summaries:set-settings", (_, s: Partial<SummarySettings>) =>
-    setSummarySettings(db, s),
+  ipcMain.handle("guides:instructions", (_, workspaceId: number) =>
+    getGuideInstructions(db, workspaceId),
   );
+  ipcMain.handle("guides:settings", (_, agent?: GuideSettings["agent"]) =>
+    getGuideSettings(db, agent),
+  );
+  ipcMain.handle("guides:set-settings", (_, settings: Partial<GuideSettings>) =>
+    setGuideSettings(db, settings),
+  );
+
   onJobs((jobs) => {
     for (const w of BrowserWindow.getAllWindows())
       if (!w.webContents.isDestroyed()) w.webContents.send("jobs:changed", jobs);

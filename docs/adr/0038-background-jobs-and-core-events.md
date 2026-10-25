@@ -8,36 +8,15 @@ Accepted
 
 ## Context
 
-File summaries ([ADR 0029](0029-file-summaries-and-activity.md)) were the only work coxswain did that nobody waits
-for, and their jobs (batches, retries, a stored history, Activity) lived in `summaries.ts`, started by calls spread
-over the main process's handlers. Summarizing an agent thread as a comment ([ADR 0037](0037-pull-request-sync-and-posting.md))
-is the same kind of work: a small model writes something short about a part of a workspace. More such work is
-coming, and the app is young enough to settle one way of doing it.
+coxswain generates reading guides and summarizes agent threads as review comments. Both need one reliable runner with bounded concurrency, retries, cancellation and Activity history.
 
 ## Decision
 
-1. **Work nobody waits for is a background job** (`src/core/jobs.ts`). A job is some items of one workspace for the
-   summary agent (ADR 0029's agent and model, in Settings): it runs them in batches, at most 6 runs at once across
-   all jobs, retries a failed run after 2 s and 8 s, asks again one at a time for items an answer left out, stops at
-   once on a failure retrying can't fix, and stores each answer as it comes. It is a row of `jobs` (progress at most
-   every 100 ms; the latest 50 shown, 500 kept; one running when coxswain quit is marked stopped at the next start),
-   so Activity shows it, also after a restart.
-2. **A kind says what a job is about** (`JobSpec`): its items, which need no model, how they batch, the prompt and
-   how the reply is read, and where an answer is stored. Two kinds: `files`, file summaries, stored in
-   `file_summaries` by fingerprint; `conclusions`, an agent thread summarized as a comment, handed to the user who
-   asked for it, who waits on it (`summarizeThread`) and stores nothing until they save the comment. A new kind is a spec; the engine, the table and Activity stay as they are.
-3. **The core has one event bus** (`src/core/events.ts`): every write emits what it changed, in the core function that
-   makes it. In a workspace: `entries`, `worktree`, `transcript`, `sessions`, `view`, `reviewed`, `github` (a check of
-   GitHub found something new, [ADR 0030](0030-workspace-watcher.md)), or that its worktree was `opened`; outside
-   one: `projects`, `workspaces`, `settings`. In memory, in order, nothing stored.
-4. **Two things listen.** The main process forwards the changes to the window, which refetches
-   ([ADR 0017](0017-data-fetching-with-tanstack-query.md)). `src/core/background.ts` starts the jobs that follow from
-   an event, and is the one place that says what runs when: `opened` and `worktree` summarise the committed changes
-   ahead.
-5. **Work ahead is one setting.** _Ahead_ in Settings turns it off: summaries are then made for a view. After a failure retrying can't fix, work ahead waits until the settings change; work
-   that was asked for still tries and shows its error.
-6. **The UI starts no background work.** It asks for what it needs (`summarizeThread`, which starts a job and
-   waits for it) and shows jobs; it holds no timers for the core.
+1. Background work runs through `JobSpec` in `src/core/jobs.ts`, with six shared slots, retries, cancellation and persisted job history. Guides supply their dedicated Settings agent/model; comment summaries retain their configured one-shot runner.
+2. Core writes emit typed events. The main process forwards them to renderer queries; `background.ts` starts Guide jobs on opened/worktree/GitHub events and forces regeneration on an explicit guide event. The UI owns no runner or polling timers.
+3. Guide checks coalesce; changed ranges supersede older runs. Complete pinned views publish atomically, retaining the old guide on failure. Sidebar progress and Activity report results.
+4. Guide agent/model/effort defaults persist per agent in SQLite. A manual guide event may carry a one-update model/effort override; queued forced requests retain it while automatic events coalesce. The one-shot runner sets model before effort and retains the chosen effort across job retries. Guide defaults are independent of retired summary preferences and start with Claude Code/Opus (currently 5.5). Changing them affects subsequent runs; Update Guide explicitly regenerates the current range.
+5. File-summary jobs, caches, tools and work-ahead controls are retired. Historical job rows and immutable schema migrations remain readable; no destructive schema migration is needed.
 
 ## Alternatives considered
 
@@ -58,3 +37,5 @@ coming, and the app is young enough to settle one way of doing it.
 - A thread summary costs a model run only when the user asks for one.
 - `summary_jobs` became `jobs` (a migration); a job has a `kind`, and its count is `items`, not `files`.
 - A job is tied to one workspace and runs on the summary agent; work that fits neither needs the spec widened.
+
+Guide jobs start on opened/worktree/GitHub events; an explicit guide event retries them. Duplicate checks coalesce, changed ranges supersede older runs, and stale output is discarded before publication. Jobs use the same runner, limits, retries, history and Activity as comment summaries.

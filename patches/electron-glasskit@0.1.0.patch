@@ -1,0 +1,139 @@
+diff --git a/native/swift/Islands/ControlViews.swift b/native/swift/Islands/ControlViews.swift
+index 6f7ec866b689f5a0c3f3e3430b34a5dba78bdeee..1c8f40a633b2d0ade8a8e96d09f5779e76229e57 100644
+--- a/native/swift/Islands/ControlViews.swift
++++ b/native/swift/Islands/ControlViews.swift
+@@ -11,7 +11,16 @@
+         if let value = progress.value {
+             ProgressView(value: min(max(value, 0), 1))
+         } else {
+-            ProgressView()
++            // Match the renderer's 14-point SpinnerIcon: 80% arc, round caps, one turn per second.
++            TimelineView(.animation) { context in
++                Circle()
++                    .trim(from: 0, to: 0.8)
++                    .stroke(style: StrokeStyle(lineWidth: 14.0 / 12, lineCap: .round))
++                    .frame(width: 10.5, height: 10.5)
++                    .rotationEffect(.degrees(context.date.timeIntervalSinceReferenceDate
++                        .truncatingRemainder(dividingBy: 1) * 360))
++                    .frame(width: 14, height: 14)
++            }
+         }
+     }
+ }
+@@ -21,6 +21,7 @@ struct ButtonNodeView: View {
+     let button: ButtonNode
+     let layout: NodeLayout
+     let context: RenderContext
++    @ObservedObject var hover: ButtonHoverState
+ 
+     var body: some View {
+         Button {
+@@ -31,6 +32,24 @@ struct ButtonNodeView: View {
+                 .contentShape(Rectangle())
+         }
+         .modifier(ButtonLook(style: button.style ?? .plain))
++        .overlay(alignment: .leading) {
++            if let action = button.hoverAction, hover.hovered {
++                Button {
++                    context.state.send(.press(node: action.id))
++                } label: {
++                    Image(systemName: action.symbol)
++                        .font(.system(size: 10, weight: .medium))
++                        .frame(width: 20, height: 20)
++                        .background(.regularMaterial, in: Circle())
++                        .contentShape(Circle())
++                }
++                .buttonStyle(.plain)
++                .help(action.help)
++                .accessibilityLabel(action.help)
++                .padding(.leading, 6)
++            }
++        }
++        .onHover { hover.hovered = $0 }
+     }
+ }
+ 
+diff --git a/native/swift/Islands/IslandState.swift b/native/swift/Islands/IslandState.swift
+index 09d7c582fd7f9b7ccbb7f2f0bbf68707b55a09b0..839c85674b7783eb866fd77f240bdd8a33cf1d8b 100644
+--- a/native/swift/Islands/IslandState.swift
++++ b/native/swift/Islands/IslandState.swift
+@@ -171,6 +171,11 @@ struct FocusRequest: Equatable, Sendable {
+     var serial: Int
+ }
+ 
++@MainActor
++final class ButtonHoverState: ObservableObject {
++    @Published var hovered = false
++}
++
+ /// Everything an island's views read: the tree, the control state and the way back to JavaScript.
+ @MainActor
+ final class IslandState: ObservableObject {
+@@ -184,6 +189,14 @@ final class IslandState: ObservableObject {
+     private let emit: @MainActor (String) -> Void
+     private var reported: (size: CGSize, fit: IslandFit)?
+     private var focusSerial = 0
++    private var buttonHovers: [String: ButtonHoverState] = [:]
++
++    func buttonHover(_ id: String) -> ButtonHoverState {
++        if let hover = buttonHovers[id] { return hover }
++        let hover = ButtonHoverState()
++        buttonHovers[id] = hover
++        return hover
++    }
+ 
+     init(root: Node, fit: IslandFit, emit: @escaping @MainActor (String) -> Void) throws {
+         self.root = root
+@@ -194,6 +207,8 @@ final class IslandState: ObservableObject {
+ 
+     func setRoot(_ node: Node) throws {
+         controls.reconcile(with: try node.controls())
++        let ids = node.buttonIDs()
++        buttonHovers = buttonHovers.filter { ids.contains($0.key) }
+         root = node
+     }
+ 
+diff --git a/native/swift/Islands/Node.swift b/native/swift/Islands/Node.swift
+index 2c3eb1e44ad189df15032c929bedabc5029ca9e2..e01f53cc17c4d035897d58e2985a4c066314437c 100644
+--- a/native/swift/Islands/Node.swift
++++ b/native/swift/Islands/Node.swift
+@@ -107,6 +107,13 @@ struct ButtonNode: Decodable, Equatable, Sendable {
+     var id: String
+     var label: NodeLabel
+     var style: Style?
++    var hoverAction: HoverAction?
++}
++
++struct HoverAction: Decodable, Equatable, Sendable {
++    var id: String
++    var symbol: String
++    var help: String
+ }
+ 
+ struct ToggleNode: Decodable, Equatable, Sendable {
+@@ -383,6 +390,12 @@ extension Node {
+         }
+     }
+ 
++    func buttonIDs() -> Set<String> {
++        var ids = Set(nested.flatMap { $0.buttonIDs() })
++        if case .button(let button) = kind { ids.insert(button.id) }
++        return ids
++    }
++
+     private var nested: [Node] {
+         switch kind {
+         case .stack(let stack): stack.children
+diff --git a/native/swift/Islands/NodeView.swift b/native/swift/Islands/NodeView.swift
+index a34a1298ea7bb046cfd490bed269d3b74d5064a1..5b9b46af98f679a2dc08cf98f5c63d84e0018ce6 100644
+--- a/native/swift/Islands/NodeView.swift
++++ b/native/swift/Islands/NodeView.swift
+@@ -51,7 +51,7 @@ struct NodeView: View {
+         case .progress(let progress):
+             ProgressNodeView(progress: progress).modifier(layout)
+         case .button(let button):
+-            ButtonNodeView(button: button, layout: layout, context: context)
++            ButtonNodeView(button: button, layout: layout, context: context, hover: context.state.buttonHover(button.id))
+         case .menu(let menu):
+             MenuNodeView(menu: menu, layout: layout, context: context)
+         case .toggle(let toggle):

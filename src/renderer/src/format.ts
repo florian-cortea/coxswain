@@ -1,3 +1,4 @@
+import { match, P } from "ts-pattern";
 import type { Project } from "../../core/projects";
 import type { ReviewEntry } from "../../core/review";
 import type { Workspace } from "../../core/workspaces";
@@ -44,7 +45,7 @@ export const gitHubOf = (p: Project) => {
 export const workspaceLabel = (w: Workspace) =>
   w.prNumber !== null ? `PR #${w.prNumber}` : `Branch ${w.branch}`;
 
-// The threads on each file, as the Navigator and a view's table of contents show them: yours (notes, questions),
+// The threads on each file, as the Navigator shows them: yours (notes, questions),
 // the agent's (explanations, findings; only with their view, whose entries the canvas has) and GitHub's (comments). Replies, follow-ups and
 // answers are part of their thread, so they don't count.
 type ThreadKind = "note" | "question" | "explanation" | "finding" | "comment";
@@ -77,3 +78,10 @@ export const itemsTitle = (c: ItemCount) =>
     .filter((k) => c[k])
     .map((k) => count(c[k], k))
     .join(", ");
+
+// Author identity used by the Guide's thread filters; local messages belong to the signed-in user.
+export const threadAuthor = (root: Pick<ReviewEntry, "kind" | "author">) =>
+  match(root)
+    .with({ kind: "comment" }, (entry) => entry.author ?? "Unknown author")
+    .with({ kind: P.union("note", "question") }, () => "You")
+    .otherwise(() => "Agent");

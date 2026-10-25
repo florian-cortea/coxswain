@@ -11,12 +11,17 @@ export function defaultViewId(
   snapshot: string | null,
   snapshotReady = !!snapshot,
 ) {
-  if (s.viewId !== undefined) return s.viewId;
+  if (s.viewId === null) return null;
+  if (s.viewId !== undefined) return views ? (views[0]?.id ?? null) : undefined;
   if (s.commit || s.scope) return null;
-  if (!views || !snapshotReady) return undefined;
-  // The newest view, unless it's of the worktree and the worktree moved on.
+  if (!views) return undefined;
+  if (views[0]?.guide) return views[0].id;
+  if (!snapshotReady) return undefined;
+  // Keep a previous guide readable while its automatic replacement is generated. Other stale views fall back to the diff.
   const newest = views[0];
-  return newest && (!newest.worktree || newest.head === snapshot) ? newest.id : null;
+  return newest && (newest.guide || !newest.worktree || newest.head === snapshot)
+    ? newest.id
+    : null;
 }
 
 // The entry records the range where it was written. Clear incompatible selections so it is

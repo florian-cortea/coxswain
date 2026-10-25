@@ -13,12 +13,10 @@ import {
   snapshot,
 } from "./git.ts";
 import { readSkill, skillNames, type SkillName } from "./skills.ts";
-import { fileSummaries, summarise } from "./summaries.ts";
 
 // ADR 0023, 0026: a view (glossary) is made by the agent pane's session with the tools below. It's pinned to base →
 // head, the merge base → a snapshot of the worktree when it was started (ADR 0028), and holds sections of markdown; its explanations and findings
-// are entries with its id. A guide is a view that goes through every changed file. Views are kept until the user
-// removes one.
+// are entries with its id. The workspace has one Guide, updated in place.
 
 // A section as the canvas shows it: its heading, then prose (markdown, with mermaid fences drawn as diagrams) and the
 // source files and file diffs its fences embed. muted (glossary): the reader can pass over it (made by a tool, tests, a
@@ -123,22 +121,11 @@ export async function listViews(db: Db, workspaceId: number): Promise<View[]> {
     .selectFrom("views")
     .select(columns)
     .where("workspace_id", "=", workspaceId)
+    .where("guide", "=", 1)
     .orderBy("id", "desc")
+    .limit(1)
     .execute();
   return rows.map(fromRow);
-}
-
-// Removes a view, with its explanations and findings (entries.view_id cascades).
-export async function removeView(db: Db, viewId: number): Promise<void> {
-  const row = await db
-    .deleteFrom("views")
-    .where("id", "=", viewId)
-    .returning("workspace_id")
-    .executeTakeFirst();
-  writing.delete(viewId);
-  if (!row) return;
-  emit({ workspaceId: row.workspace_id, what: "view" });
-  emit({ workspaceId: row.workspace_id, what: "entries" });
 }
 
 // Told when a tool changed a workspace's view or its entries, so the UI refetches them while the agent works.
@@ -165,95 +152,11 @@ export function turnEnded(workspaceId: number) {
   if (any) tell(workspaceId);
 }
 
-// A prompt for New View: a built-in one (id null), or one the user saved. How to make a view is in start_view's
-// result, so a view asked for in the agent's own words is made the same way; whether it's a guide is the agent's call,
-// from the prompt's words.
-export type Prompt = { id: number | null; title: string; body: string };
-export const builtInPrompts: Prompt[] = [
-  {
-    id: null,
-    title: "Guide",
-    body: "Make a guide to this workspace's changes with coxswain's tools: what the change sets out to do, then its files in the order that makes it easiest to follow, from the core of the change outwards, with tests and tool-made files last.",
-  },
-  {
-    id: null,
-    title: "Review",
-    body: "Make a guide to this workspace's changes with coxswain's tools, and review them as you go with the code-review skill: add a finding on each line with a bug, a risk (security, data loss, concurrency, a broken edge case), a gap against what the PR set out to do, or a clearly better way, saying why and what to do instead. Leave style nits out.",
-  },
-  {
-    id: null,
-    title: "Questions for the author",
-    body: "Make a guide to this workspace's changes with coxswain's tools for a reader who must understand a large change, likely written by an agent, well enough to question its author. Open with what the change sets out to do and how it's built. In each section, add explanations on the decisions the change doesn't explain, the assumptions it makes, and what's missing or surprising. End with a section of the questions to ask the author, each saying which files or lines it's about.",
-  },
-  {
-    id: null,
-    title: "Data model",
-    body: "Make a view with coxswain's tools of the data model this workspace contains: the types, tables or schemas, how they relate, and what the changes add, remove or change in them, as a diagram with the key source files and the relevant diffs.",
-  },
-  {
-    id: null,
-    title: "Data flow",
-    body: "Make a view with coxswain's tools of how data flows through the code this workspace contains, from where it enters to where it's stored or shown, and where the changes alter that path, as a diagram with the key source files and the relevant diffs.",
-  },
-];
-// New View…: a view of whatever the user types along with it.
-export const customPrompt: Prompt = {
-  id: null,
-  title: "View",
-  body: "Make a view with coxswain's tools of what the user asks for in their message.",
-};
-
-export async function listPrompts(db: Db): Promise<Prompt[]> {
-  const saved = await db
-    .selectFrom("prompts")
-    .select(["id", "title", "body"])
-    .orderBy("id")
-    .execute();
-  return [...builtInPrompts, ...saved];
-}
-export async function savePrompt(db: Db, title: string, body: string) {
-  title = title.trim();
-  body = body.trim();
-  if (!title || !body) throw new Error("A prompt needs a title and a text.");
-  await db
-    .insertInto("prompts")
-    .values({ title, body, created_at: new Date().toISOString() })
-    .execute();
-  emit({ what: "settings" });
-}
-export async function deletePrompt(db: Db, id: number) {
-  await db.deleteFrom("prompts").where("id", "=", id).execute();
-  emit({ what: "settings" });
-}
-
-// What the canvas shows when a view is asked for, if not all of the workspace's changes: a commit, an agent turn, or a
-// scope (ADR 0028). head null: the worktree as it is when the view starts.
-export type ViewRange = { what: string; base: string; head: string | null };
-
-// A request for a view: the text, after the range it's for, which start_view is told to take.
-export const viewRequest = (text: string, range: ViewRange | null) =>
-  range
-    ? `For ${range.what} only (start_view with base "${range.base}" and head "${range.head ?? "worktree"}"): ${text}`
-    : text;
-
-// A prompt attached to the agent pane's composer: what the chat calls it, and the request the agent gets.
+// Retained for historic chat attachments.
 export type AttachedPrompt = { title: string; prompt: string };
-export const attachPrompt = (p: Prompt, range: ViewRange | null): AttachedPrompt => ({
-  title: range ? `${p.title} · ${range.what}` : p.title,
-  prompt: viewRequest(p.body, range),
-});
 
-// Update View, on a stale view's notice: the same view again, of the code as it is now. A new view, since a view stays
-// pinned to the range it was made from; the old one is kept until the user removes it.
-export const updateViewPrompt = (
-  v: Pick<View, "id" | "title" | "guide" | "base" | "head">,
-): AttachedPrompt => ({
-  title: `Update · ${v.title}`,
-  prompt: `View ${v.id}, “${v.title}”${v.guide ? ", a guide," : ""} is out of date: the code has changed since it was made, pinned to ${v.base} → ${v.head}. Make it again with coxswain's tools as a new view of the code as it is now: start_view with the same title${v.guide ? ", as a guide" : ""}, over the same range (all of the workspace's changes, unless the view was of a part of them), and write it the same way, keeping what still holds and changing what the code changed. \`git diff ${v.head}\` shows what changed in the worktree since.`,
-});
-
-const howToView = `How to write the view: add its sections in reading order with write_section. Each section is markdown
-(GitHub-flavoured: tables, lists, code) and starts with a "## " heading, which lists it in the view's table of contents.
+const howToView = `How to write the Guide: add its sections in reading order with write_section. Each section is markdown
+(GitHub-flavoured: tables, lists, code) and starts with a "## " heading, which lists it in the Guide sidebar.
 Three kinds of fenced blocks do more than show code:
 - A diagram: a \`\`\`mermaid block (flowchart, sequenceDiagram, erDiagram, classDiagram, stateDiagram-v2). Use erDiagram
   or classDiagram for data models, flowchart or sequenceDiagram for data flow. Keep diagrams small enough to read in a
@@ -271,40 +174,23 @@ Three kinds of fenced blocks do more than show code:
 Each path can be embedded once, as either a file or a diff. Views can contain only prose and diagrams and need no diff.
 Before an embedded file or diff, write a sentence or two saying what it does in this change and why that matters.`;
 
-const howToGuide = `How to make the guide. A guide is read by a reviewer who knows the codebase but not this change; every
-sentence in it is a claim about the code: what it does now, why, and what follows from it, which the reviewer can
-hold against the diff. "Writes now run in a transaction, so a failed read-back rolls the insert back too" is a claim;
-"Check that writes are transactional" hands the work back to the reviewer.
-1. Read the skills in one read_skill call: pr for the overview and writing-beats for the order of the sections, plus
-   code-review when the user asked for a review.
-2. Plan from the file summaries in the list below. Read a diff where its summary falls short: a file without one or
-   with an unclear one, the few files at the heart of the change, and the lines you explain or judge. Each diff read
-   slows every later step, so read the few that matter.
-3. Write the overview first, as the pr skill says: the change's intent in a few sentences, the smallest visual that
-   shows its shape, and its danger (one-way or two-way door, and blast radius).
-4. Sort the changed files into sections, each about one theme (a feature, a refactor, tests, configuration, ...), in
-   the order writing-beats' grounding gives: each section leans only on what the overview or an earlier section
-   grounded. Give each a short heading, then one to three sentences of claims about what this part of the change does
-   and why, and then, for each of its files, one sentence on what changed in it, followed by its diff fence. Add a
-   diagram where it shows how pieces connect better than words.
-5. Embed every changed file in exactly one section. Files made by a tool, and those the user says they don't care about
-   (tests, mechanical fixes, whatever they name), go in sections of their own at the end with every fence muted: a
-   heading that says what they are and one line for the section, no sentence per file.
-6. Add explanations with add_explanation where the lines alone leave the reviewer guessing: why it's done this way,
-   the invariant it keeps, what happens at the edge, how it ties to code elsewhere. Each one tells the reviewer
-   something they can't read off those lines; a few such beat many that restate the code. Explanations describe; in a
-   review, judgements go in findings.
-7. In a review, add findings with add_finding as the code-review skill says. A guide without a review has none.
-8. Write in a few calls: give write_section several sections at once, add_explanation several explanations
-   (add_finding: findings).
-9. The guide is done when every changed file is in a section. Then say in a few lines what the changes do and how the
-   guide is laid out; the guide itself is in the app, so the chat carries only that.`;
+export const guideStyle = `Write a concise reading guide. Group implementation changes into thematic sections, core behavior first.
+End with a separate Tests section containing all test files, then a separate Generated section containing all generated files.
+Omit an ending section when its group is empty. Use each file's supplied group when available; generated artifacts take precedence over tests.
+Use short descriptive headings and one or two short sentences per section explaining
+intent, behavior and connections that help the reader understand the change. The code is visible in adjacent cards:
+keep code snippets, pseudocode and line-by-line restatements out of the prose. A plain guide describes; it adds no review
+findings, checklists, merge-risk report or chat recap. Embed every changed file exactly once.`;
 
-const howToOther = `This view shows only what you put in it: embed the source files or file diffs that matter to what it's about, and
-explain the rest with prose, tables and diagrams. Open it the way the pr skill opens a summary (read_skill pr): the
-smallest visual that makes its point, with a few sentences of claims around it. Mute an embed when it's there for
-context rather than the point, e.g. a generated type the data passes through. When you're done, say in a line or two
-what it shows; the view itself is in the app, so the chat carries only that.`;
+const howToGuide = `${guideStyle}
+1. Read writing-beats with read_skill for section order. For a requested review, also read pr and code-review.
+2. Read the relevant diffs from the listed files, then group the changes into concise thematic sections.
+3. Write sections with short headings, concise prose and empty diff path= fences. An optional opening section is at
+   most two sentences of intent. Keep implementation details in the embedded cards. Use a small Mermaid diagram
+   only when it makes a relationship clearer than prose; ordinary code fences belong in the file cards.
+4. Embed every changed file once. Put generated files last in their own muted section, with a single short sentence.
+5. Use add_explanation sparingly for context the code cannot show. Add findings only for an explicitly requested review.
+6. Give write_section several sections in one call. Finish when every changed file is embedded; acknowledge in one line.`;
 
 // The files of a view's range, to check the tools' paths against, and those at its head. Both are of commits, which
 // never change, so each is read once: every write_section asks, and a big range takes seconds to list.
@@ -355,49 +241,21 @@ async function changeView<T>(
   }
 }
 
-// The files' summaries (ADR 0029) as lines for the agent: each file's, or why there's none.
-async function summaryLines(
-  db: Db,
-  workspaceId: number,
-  view: Pick<View, "base" | "head">,
-  files: ChangedFile[],
-  wait = 0,
-): Promise<Map<string, string>> {
-  const summaries = await fileSummaries(
-    db,
-    workspaceId,
-    view.base,
-    view.head,
-    files.map((f) => f.path),
-    wait,
-  );
-  return new Map(
-    summaries.map((s) => [
-      s.path,
-      s.summary ??
-        (s.state === "pending" ? "(summary being written)" : "(no summary: read its diff)"),
-    ]),
-  );
-}
 // Tool results stay under listChars characters of file list, about 6k tokens: Codex cuts a result of more than about
-// 10k tokens in the middle, losing files without saying which. A longer list is paged: file_summaries with from.
+// 10k tokens in the middle, losing files without saying which. A longer list is paged: list_changed_files with from.
 export const viewLimits = { listChars: 20_000 };
 const letter = { added: "A", modified: "M", deleted: "D", renamed: "R" } as const;
 
-// The files from index from on, with their summary lines, grouped under their folders (a long path is written once),
+// The files from index from on, with their diff counts, grouped under their folders (a long path is written once),
 // as many as fit. next: where the rest start, or null.
-function listFiles(
-  files: ChangedFile[],
-  lines: Map<string, string>,
-  from = 0,
-): { text: string; next: number | null } {
+function listFiles(files: ChangedFile[], from = 0): { text: string; next: number | null } {
   let text = "";
   let folder: string | null = null;
   let i = from;
   for (; i < files.length; i++) {
     const f = files[i];
     const dir = f.path.slice(0, f.path.lastIndexOf("/") + 1);
-    const line = `  ${letter[f.status]} +${f.additions} -${f.deletions} ${f.path.slice(dir.length)}${f.previousPath ? ` (from ${f.previousPath})` : ""}: ${lines.get(f.path)}\n`;
+    const line = `  ${letter[f.status]} +${f.additions} -${f.deletions} ${f.path.slice(dir.length)}${f.previousPath ? ` (from ${f.previousPath})` : ""}\n`;
     const chunk = (dir !== folder ? `${dir || "./"}\n` : "") + line;
     if (text && text.length + chunk.length > viewLimits.listChars) break;
     text += chunk;
@@ -406,33 +264,25 @@ function listFiles(
   return { text: text.trimEnd(), next: i < files.length ? i : null };
 }
 const listHeader = (files: ChangedFile[], from: number, next: number | null) =>
-  `Changed files ${from + 1}–${next ?? files.length} of ${files.length}, by folder (a file's path is its folder and its name; A added, M modified, D deleted, R renamed; lines added and removed; then its file summary):`;
+  `Changed files ${from + 1}–${next ?? files.length} of ${files.length}, by folder (a file's path is its folder and its name; A added, M modified, D deleted, R renamed; lines added and removed):`;
 const listRest = (files: ChangedFile[], next: number | null) =>
   next === null
     ? ""
-    : `\n… ${files.length - next} more files: call file_summaries with from: ${next} for the next ones.`;
+    : `\n… ${files.length - next} more files: call list_changed_files with from: ${next} for the next ones.`;
 
-const aboutSummaries =
-  "File summaries are written ahead by a small model from each diff alone: plan from them and pick which few diffs to read. They're in the list of changed files below; call file_summaries only for those still being written.";
-
-// The view a tool writes to: the one with the id given, or the workspace's latest.
-async function toolView(db: Db, workspaceId: number, id: number | undefined) {
-  let q = db.selectFrom("views").select(columns).where("workspace_id", "=", workspaceId);
-  q = id === undefined ? q.orderBy("id", "desc").limit(1) : q.where("id", "=", id);
-  const row = await q.executeTakeFirst();
-  if (!row)
-    throw new Error(
-      id === undefined ? "No view yet: call start_view first" : `No view ${id}: see list_views`,
-    );
+// All tools target the workspace's current Guide. Optional legacy ids are accepted by callers only.
+async function toolView(db: Db, workspaceId: number, _id: number | undefined) {
+  const row = await db
+    .selectFrom("views")
+    .select(columns)
+    .where("workspace_id", "=", workspaceId)
+    .where("guide", "=", 1)
+    .orderBy("id", "desc")
+    .executeTakeFirst();
+  if (!row) throw new Error("No Guide yet: call start_guide first");
   return { ...fromRow(row), markdown: markdownOf(row) };
 }
-
-const viewArg = {
-  view: {
-    type: "integer",
-    description: "The view's id, from start_view or list_views; leave out for the latest",
-  },
-};
+const viewArg = {};
 
 const anchorProperties = {
   path: {
@@ -555,21 +405,13 @@ const destructiveTool = { readOnlyHint: false, destructiveHint: true, openWorldH
 export function viewTools(db: Db, workspaceId: number): McpTool[] {
   return [
     {
-      name: "start_view",
+      name: "start_guide",
       annotations: closedTool,
       description:
-        "Start a new view of code or changes in coxswain, the app the user reads them in: sections of markdown, with diagrams, source files and file diffs the user can comment on. No diff is required. A guide is a view that walks through every changed file in reading order; other views show one aspect (the data model, a data flow, whatever the user asked for). Call it first, before looking at the changes: it works out the range itself, all of the workspace's changes from the merge base (the one GitHub uses for the PR, right after merges from the base branch too) to the worktree, and lists the changed files, so don't work one out with git. Give base and head only when the user asks about one commit, an agent turn or a part of the changes. Returns the range the view is pinned to, the changed files and how to write the view.",
+        "Start rewriting the workspace’s single Guide in place. Call before reading changes: it returns the pinned range and changed files. Write short thematic sections with embedded diffs using write_section, covering every changed file once. The workspace has one Guide; this replaces its content rather than creating another document.",
       inputSchema: {
         type: "object",
         properties: {
-          title: {
-            type: "string",
-            description: 'A name of one to three words, e.g. "Guide", "Data model"',
-          },
-          guide: {
-            type: "boolean",
-            description: "It walks through every changed file (a guide or a review)",
-          },
           base: {
             type: "string",
             description:
@@ -581,9 +423,8 @@ export function viewTools(db: Db, workspaceId: number): McpTool[] {
               'The commit they end at (a hash, HEAD, a branch or tag), or "worktree" for the worktree as it is now, uncommitted changes included (the default)',
           },
         },
-        required: ["title", "guide"],
       },
-      call: async (v: { title: string; guide: boolean; base?: string; head?: string }) => {
+      call: async (v: { base?: string; head?: string }) => {
         const at = (await openedBefore(db, workspaceId)) ?? (await openWorktree(db, workspaceId));
         if (at.status !== "ok")
           throw new Error("message" in at ? at.message : `GitHub: ${at.status}`);
@@ -597,32 +438,15 @@ export function viewTools(db: Db, workspaceId: number): McpTool[] {
           head = now.sha;
         } else head = await resolveCommit(db, workspaceId, v.head!);
         const files = await changedFiles(db, { workspaceId, base, head });
-        if (!v.title.trim()) throw new Error("title is empty");
-        const { id } = await db
-          .insertInto("views")
-          .values({
-            workspace_id: workspaceId,
-            title: v.title.trim(),
-            guide: v.guide ? 1 : 0,
-            worktree: ofWorktree ? 1 : 0,
-            base,
-            head,
-            created_at: new Date().toISOString(),
-          })
-          .returning("id")
-          .executeTakeFirstOrThrow();
+        const id = await replaceGuide(db, workspaceId, base, head, [], ofWorktree);
         beingWritten(workspaceId, id);
-        // ADR 0029: what has no summary yet starts being summarised now; what's ready is listed with each file.
-        await summarise(db, workspaceId, base, head, "view");
-        const summaries = await summaryLines(db, workspaceId, { base, head }, files);
-        const listed = listFiles(files, summaries);
+        const listed = listFiles(files);
         return [
-          `View ${id} started; the other tools write to it when given view: ${id}, or to the latest view without it. It's pinned to ${base}${base === at.mergeBase ? " (the merge base)" : ""} → ${head}${ofWorktree ? " (the worktree as it is now, uncommitted changes included, as a commit)" : ""}.`,
+          `Guide ${id} is being updated in place; the other tools write to it without a view parameter. It's pinned to ${base}${base === at.mergeBase ? " (the merge base)" : ""} → ${head}${ofWorktree ? " (the worktree as it is now, uncommitted changes included, as a commit)" : ""}.`,
           `Read a diff with \`git diff ${base} ${head} -- <path>\`. Line numbers are the file's at the head (side "new") or, for removed lines, at the base (side "old").`,
           `Read a source file with \`git show ${head}:<path>\`; list available files with \`git ls-tree -r --name-only ${head}\`. Source-file line annotations use side "new".`,
-          ...(files.length ? [aboutSummaries] : []),
           howToView,
-          v.guide ? howToGuide : howToOther,
+          howToGuide,
           files.length
             ? `${listHeader(files, 0, listed.next)}\n${listed.text}${listRest(files, listed.next)}`
             : "Changed files: none. You can still explain existing code with source files, prose and diagrams.",
@@ -633,7 +457,7 @@ export function viewTools(db: Db, workspaceId: number): McpTool[] {
       name: "write_section",
       annotations: closedTool,
       description:
-        "Add a section to a view (the latest unless view is given), after the ones so far, or with number replace section number N (1 is the first). To write several, give sections instead: they're put in order in one call. Call start_view first.",
+        "Add a section to the workspace’s Guide, after the ones so far, or with number replace section number N (1 is the first). To write several, give sections instead: they're put in order in one call. Call start_guide first.",
       inputSchema: {
         type: "object",
         properties: {
@@ -766,10 +590,10 @@ export function viewTools(db: Db, workspaceId: number): McpTool[] {
         }),
     },
     {
-      name: "file_summaries",
+      name: "list_changed_files",
       annotations: readTool,
       description:
-        "The file summaries of a view's changed files (the latest view unless view is given): a sentence on what changed in each, written ahead by a small model from its diff alone. start_view lists them already, as many as fit; call this for the rest (from), for those still being written (paths and wait), or for a view started in an earlier turn. A long list comes in parts: the result says the from of the next. Summaries missing are started again; wait gives those being written up to that many seconds.",
+        "List changed file paths, status and diff counts for a view (latest unless view is given). start_guide lists the first page; use from to continue. Read actual diffs before explaining changes. Does not run a model.",
       inputSchema: {
         type: "object",
         properties: {
@@ -777,10 +601,6 @@ export function viewTools(db: Db, workspaceId: number): McpTool[] {
             type: "array",
             items: { type: "string" },
             description: "Changed files to get; leave out for all",
-          },
-          wait: {
-            type: "integer",
-            description: "Seconds to wait for summaries being written, up to 120",
           },
           from: {
             type: "integer",
@@ -790,7 +610,7 @@ export function viewTools(db: Db, workspaceId: number): McpTool[] {
           ...viewArg,
         },
       },
-      call: async (a: { paths?: string[]; wait?: number; from?: number; view?: number }) => {
+      call: async (a: { paths?: string[]; from?: number; view?: number }) => {
         const view = await toolView(db, workspaceId, a.view);
         const changed = await changedFiles(db, view);
         const unknown = (a.paths ?? []).filter((p) => !changed.some((f) => f.path === p));
@@ -798,23 +618,20 @@ export function viewTools(db: Db, workspaceId: number): McpTool[] {
           throw new Error(`Not changed in the view's range: ${unknown.join(", ")}`);
         const files = a.paths ? changed.filter((f) => a.paths!.includes(f.path)) : changed;
         if (!files.length) return "The view has no changed files.";
-        await summarise(db, workspaceId, view.base, view.head, "view");
-        const wait = Math.min(Math.max(a.wait ?? 0, 0), 120) * 1000;
         const from = Math.min(Math.max(a.from ?? 0, 0), files.length - 1);
-        const lines = await summaryLines(db, workspaceId, view, files, wait);
-        const listed = listFiles(files, lines, from);
+        const listed = listFiles(files, from);
         return `${listHeader(files, from, listed.next)}\n${listed.text}${listRest(files, listed.next)}`;
       },
     },
     {
-      name: "list_views",
+      name: "read_guide",
       annotations: readTool,
       description:
-        "List the workspace's views, newest first: id, title, range and section headings. Use an id to write to a view other than the latest.",
+        "Read the workspace’s Guide: its range and section headings. Updates replace this Guide in place.",
       inputSchema: { type: "object", properties: {} },
       call: async () => {
         const views = await listViews(db, workspaceId);
-        if (!views.length) return "No views yet.";
+        if (!views.length) return "No Guide yet.";
         return views
           .map((v) =>
             [
@@ -829,7 +646,7 @@ export function viewTools(db: Db, workspaceId: number): McpTool[] {
       name: "read_skill",
       annotations: readTool,
       description:
-        "Read skills for making views, each with how it applies in coxswain: pr (a view's overview: the change's intent, its shape as a small visual, its danger), writing-beats (the order of a view's sections), code-review (findings in a review). Give all you need in names, in one call. start_view's result says when to read each.",
+        "Read skills for making views, each with how it applies in coxswain: pr (a view's overview: the change's intent, its shape as a small visual, its danger), writing-beats (the order of a view's sections), code-review (findings in a review). Give all you need in names, in one call. start_guide's result says when to read each.",
       inputSchema: {
         type: "object",
         properties: { names: { type: "array", items: { type: "string", enum: skillNames } } },
@@ -846,7 +663,7 @@ export function viewTools(db: Db, workspaceId: number): McpTool[] {
       name: "add_explanation",
       annotations: closedTool,
       description:
-        "Explain lines of a file or file diff in the view: what the lines alone don't tell the reader, such as why they're written this way, the invariant they keep, what happens at the edge, or how they tie to code elsewhere. Give several in explanations to add them in one call. Call start_view first.",
+        "Explain lines of a file or file diff in the view: what the lines alone don't tell the reader, such as why they're written this way, the invariant they keep, what happens at the edge, or how they tie to code elsewhere. Give several in explanations to add them in one call. Call start_guide first.",
       inputSchema: anchorSchema("explanations"),
       call: (a: Partial<AnchorArgs> & { explanations?: AnchorArgs[] }) =>
         addAll(db, workspaceId, "explanation", a, a.explanations),
@@ -855,10 +672,63 @@ export function viewTools(db: Db, workspaceId: number): McpTool[] {
       name: "add_finding",
       annotations: closedTool,
       description:
-        "Add a review finding on lines of a file or file diff in the view: a bug, risk, missing case or better way, as the code-review skill's axes sort them. Only when the user asked for a review. Give several in findings to add them in one call. Call start_view first.",
+        "Add a review finding on lines of a file or file diff in the view: a bug, risk, missing case or better way, as the code-review skill's axes sort them. Only when the user asked for a review. Give several in findings to add them in one call. Call start_guide first.",
       inputSchema: anchorSchema("findings"),
       call: (a: Partial<AnchorArgs> & { findings?: AnchorArgs[] }) =>
         addAll(db, workspaceId, "finding", a, a.findings),
     },
   ];
+}
+
+// Keep the current Guide's identity across updates. Older legacy views remain inert in storage.
+async function replaceGuide(
+  db: Db,
+  workspaceId: number,
+  base: string,
+  head: string,
+  sections: string[],
+  worktree = true,
+) {
+  return db.transaction().execute(async (tx) => {
+    const current = await tx
+      .selectFrom("views")
+      .select("id")
+      .where("workspace_id", "=", workspaceId)
+      .where("guide", "=", 1)
+      .orderBy("id", "desc")
+      .executeTakeFirst();
+    const values = {
+      title: "Guide",
+      guide: 1,
+      worktree: worktree ? 1 : 0,
+      base,
+      head,
+      sections: JSON.stringify(sections),
+    };
+    if (current) {
+      await tx.updateTable("views").set(values).where("id", "=", current.id).execute();
+      return current.id;
+    }
+    return (
+      await tx
+        .insertInto("views")
+        .values({ ...values, workspace_id: workspaceId, created_at: new Date().toISOString() })
+        .returning("id")
+        .executeTakeFirstOrThrow()
+    ).id;
+  });
+}
+
+// Automatic guides publish only when complete; readers keep the preceding view while the job runs.
+export async function publishGuide(
+  db: Db,
+  workspaceId: number,
+  base: string,
+  head: string,
+  sections: string[],
+) {
+  await pinRevision(db, workspaceId, head);
+  const id = await replaceGuide(db, workspaceId, base, head, sections);
+  emit({ workspaceId, what: "view" });
+  return id;
 }

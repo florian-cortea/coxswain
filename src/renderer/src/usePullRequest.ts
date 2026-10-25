@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo } from "react";
 import type { ChangedFile, GitProblem } from "../../core/git";
 import type { GitHubProblem, PullRequestDetails } from "../../core/github";
+import type { View } from "../../core/views";
 import type { Workspace } from "../../core/workspaces";
 import { core } from "./queries";
 
@@ -24,7 +25,10 @@ export type PullRequestData = {
 // What the Navigator and Viewer share about the current workspace: its worktree (cloned and created on first
 // open, ADR 0008) and what differs from its merge base. Everything reloads when the core says it changed: the
 // worktree after an agent turn or when HEAD moves, what's on GitHub when its check found something new (ADR 0030).
-export function usePullRequest(workspace: Workspace | undefined): PullRequestData {
+export function usePullRequest(
+  workspace: Workspace | undefined,
+  pinnedGuide?: Pick<View, "base" | "head">,
+): PullRequestData {
   const id = workspace?.id ?? 0;
   // ADR 0030: the core keeps the workspace on screen fresh, and checks GitHub for it at once.
   useEffect(() => {
@@ -38,11 +42,17 @@ export function usePullRequest(workspace: Workspace | undefined): PullRequestDat
   const at = w?.status === "ok" ? w : null;
   // Kept while head and merge base stay: a new object would reset what depends on it, e.g. the commit picked.
   const commits = useMemo(
-    () => at && { head: at.head, mergeBase: at.mergeBase },
-    [at?.head, at?.mergeBase],
+    () =>
+      at
+        ? { head: at.head, mergeBase: at.mergeBase }
+        : pinnedGuide
+          ? { head: pinnedGuide.head, mergeBase: pinnedGuide.base }
+          : null,
+    [at?.head, at?.mergeBase, pinnedGuide?.base, pinnedGuide?.head],
   );
   const prNumber = w?.status === "ok" ? w.prNumber : undefined;
-  const ready = !!workspace && !!commits;
+  // The saved Guide reads only its pinned range. Live git/GitHub reads wait for the actual worktree check.
+  const ready = !!workspace && !!at;
   const changed = useQuery({
     ...core("listChangedFiles", id, commits?.mergeBase ?? ""),
     enabled: ready,

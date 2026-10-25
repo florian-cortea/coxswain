@@ -1,3 +1,4 @@
+import { useGlassOcclusion } from "./components/NativeToolbar";
 import { useQuery } from "@tanstack/react-query";
 import { match, P } from "ts-pattern";
 import { useState } from "react";
@@ -25,6 +26,7 @@ export function CommandPalette(props: {
   onOpen: (path: string) => void;
   onClose: () => void;
 }) {
+  useGlassOcclusion();
   const [query, setQuery] = useState(props.initialQuery);
   const [current, setCurrent] = useState(0);
   const acting = query.startsWith(">");
@@ -62,10 +64,10 @@ export function CommandPalette(props: {
     .otherwise(() => "No matching files");
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-center pt-24" onMouseDown={props.onClose}>
+    <div className="fixed inset-0 z-50 flex justify-center px-6 pt-24" onMouseDown={props.onClose}>
       <div
         className={cn(
-          "flex h-fit max-h-96 w-[36rem] flex-col rounded-lg border bg-white p-2 shadow-xl dark:bg-neutral-900",
+          "flex h-fit max-h-[min(24rem,calc(100vh-112px))] w-full max-w-xl flex-col rounded-xl border bg-white p-3 shadow-xl dark:bg-neutral-900",
           divider,
         )}
         onMouseDown={(e) => e.stopPropagation()}
@@ -92,7 +94,7 @@ export function CommandPalette(props: {
             <ListRow
               key={r.key}
               ref={(el) => void (i === current && el?.scrollIntoView({ block: "nearest" }))}
-              className={cn("py-1", i === current && selectable(true))}
+              className={cn(i === current && selectable(true))}
               onClick={r.pick}
             >
               <span className="flex justify-between gap-4">

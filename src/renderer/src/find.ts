@@ -65,7 +65,7 @@ export function activateFindPane(pane: FindPane) {
 }
 function available(target: FindTarget) {
   // Off-screen files belong to the search too; only display-hidden or unmounted viewers are excluded.
-  return !!target.element()?.checkVisibility();
+  return !!target.element()?.checkVisibility({ visibilityProperty: true });
 }
 function canvasTargets() {
   return [...targets]

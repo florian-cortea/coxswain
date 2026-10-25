@@ -8,7 +8,7 @@ Accepted
 
 ## Context
 
-Summaries are made ahead for a workspace's committed changes ([ADR 0029](0029-file-summaries-and-activity.md)), and
+Guides update for a workspace’s changed range ([ADR 0038](0038-background-jobs-and-core-events.md)), and
 the canvas, the Commits pane, the PR panel and the review threads mirrored from GitHub
 ([ADR 0037](0037-pull-request-sync-and-posting.md)) all show what a workspace is on, locally and on GitHub. Any of it
 can change without coxswain doing anything: a commit, pull or reset in a terminal, a push by an agent, a new commit,

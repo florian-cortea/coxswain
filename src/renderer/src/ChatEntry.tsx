@@ -23,13 +23,13 @@ export function Entry({
   if (entry.comment) return <CommentCard comment={entry.comment} onViewThread={onViewThread} />;
   if (entry.review)
     return (
-      <SentCard className={cn("px-2.5 py-2 text-xs", muted)}>
+      <SentCard className={cn("px-4 py-3 text-xs", muted)}>
         Review sent to Agent · {count(entry.review.threads, "thread")}
       </SentCard>
     );
   if (entry.check)
     return (
-      <SentCard className={cn("px-2.5 py-2 text-xs", muted)}>
+      <SentCard className={cn("px-4 py-3 text-xs", muted)}>
         Failing check <span className="font-medium">{entry.check.name}</span> sent to Agent
       </SentCard>
     );
@@ -39,14 +39,14 @@ export function Entry({
         <Attachments attachments={entry.attachments ?? []} />
         <div
           data-find-text
-          className={cn("px-2.5 pt-2 text-xs", entry.view.note ? "" : "pb-2", muted)}
+          className={cn("px-4 pt-3 text-xs", entry.view.note ? "" : "pb-2", muted)}
         >
           View · <span className="font-medium">{entry.view.title}</span> sent to Agent
         </div>
         {entry.view.note && (
           <div
             data-find-text
-            className="line-clamp-6 px-2.5 py-1.5 whitespace-pre-wrap select-text [overflow-wrap:anywhere]"
+            className="line-clamp-6 px-4 py-3 whitespace-pre-wrap select-text [overflow-wrap:anywhere]"
           >
             {entry.view.note}
           </div>
@@ -63,7 +63,7 @@ export function Entry({
   // my-3: room above and below the user's messages, between the agent's turns.
   if (entry.kind === "user")
     return (
-      <div className="my-3 self-end rounded-md bg-neutral-100 px-2 py-1 whitespace-pre-wrap select-text [overflow-wrap:anywhere] dark:bg-neutral-800">
+      <div className="my-3 max-w-[90%] shrink-0 self-end rounded-xl bg-neutral-100 px-4 py-3 whitespace-pre-wrap select-text [overflow-wrap:anywhere] dark:bg-neutral-800">
         <Attachments attachments={entry.attachments ?? []} />
         <span data-find-text>{entry.text}</span>
       </div>
@@ -74,7 +74,13 @@ export function Entry({
 // What the user sent from outside the chat (a comment, a review, a check), on the right like their messages.
 function SentCard({ className, children }: { className?: string; children: ReactNode }) {
   return (
-    <div className={cn("my-3 max-w-[85%] shrink-0 self-end rounded-lg border", divider, className)}>
+    <div
+      className={cn(
+        "ui-sent-card my-3 max-w-[90%] shrink-0 self-end rounded-xl border",
+        divider,
+        className,
+      )}
+    >
       {children}
     </div>
   );
@@ -93,7 +99,7 @@ function CommentCard({
     <SentCard className="flex flex-col">
       <button
         onClick={view}
-        className={cn("flex items-start gap-2 px-2.5 pt-2 text-left text-xs", muted)}
+        className={cn("flex items-start gap-2 px-4 pt-3 text-left text-xs", muted)}
       >
         <span data-find-text className="min-w-0 flex-1 [overflow-wrap:anywhere]">
           Comment on <span className="font-mono">{c.where}</span> sent to Agent
@@ -102,14 +108,14 @@ function CommentCard({
       </button>
       <div
         data-find-text
-        className="line-clamp-6 px-2.5 py-1.5 whitespace-pre-wrap select-text [overflow-wrap:anywhere]"
+        className="line-clamp-6 px-4 py-3 whitespace-pre-wrap select-text [overflow-wrap:anywhere]"
       >
         {c.body}
       </div>
       <button
         onClick={view}
         className={cn(
-          "border-t px-2.5 py-1.5 text-right text-xs hover:text-neutral-900 dark:hover:text-neutral-100",
+          "border-t px-4 py-3 text-right text-xs hover:text-neutral-900 dark:hover:text-neutral-100",
           muted,
           divider,
         )}
@@ -179,12 +185,12 @@ function PermissionPrompt({
   onAnswer: (optionId: string) => void;
 }) {
   return (
-    <div className="flex shrink-0 flex-col gap-1.5 rounded-md border border-neutral-300 p-1.5 text-xs dark:border-neutral-700">
+    <div className="ui-sent-card flex shrink-0 flex-col gap-3 rounded-xl p-3 text-xs">
       <span>Agent wants to:</span>
       <div className="max-h-24 overflow-y-auto font-mono whitespace-pre-wrap select-text [overflow-wrap:anywhere]">
         {permission.title}
       </div>
-      <div className="flex flex-wrap justify-end gap-1">
+      <div className="flex flex-wrap justify-end gap-2">
         {permission.options.map((o) => (
           <Button
             key={o.id}

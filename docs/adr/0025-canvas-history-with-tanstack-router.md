@@ -24,18 +24,18 @@ drawn after they're read.
    `navigate()`, so every change is an entry, and Back and Forward are `history.back()` and `history.forward()`.
 2. **One history for the window, across workspaces.** Opening a workspace is an entry; Back or Forward to another
    workspace's entry opens that workspace again. The location chooses the workspace and its canvas together. SQLite's latest-opened workspace is only the
-   startup/project default, and opening a location records that workspace in SQLite. Sidebar switches restore the
-   last location for that workspace; Back/Forward restore their exact entry. An unspecified default view is resolved
-   before the canvas is shown, along with the range's entries and Reviewed marks, so the live diff does not flash first.
+   startup/project default, and opening a location records that workspace in SQLite. Workspace tab switches restore the
+   last location for that workspace; Back/Forward restore their exact entry. A saved Guide resolves directly to its immutable range while the live worktree/GitHub check proceeds; its entries and Reviewed marks are read at that pinned revision, so neither an empty live diff nor a network-loading screen flashes first. Live Changes waits for the actual worktree check.
 3. **Scroll is ours, per entry.** A map from the entry's key to where the canvas was scrolled: a whole file by offset,
    the file diffs by the one at the top and how far into it. Restored on Back and Forward, then again until it holds,
-   since Pierre's Virtualizer applies the fix-up it worked out for the old place after a jump. Sidebar switches
-   also restore the workspace's last scroll. Pending restores are cancelled when navigation supersedes them.
+   since Pierre's Virtualizer applies the fix-up it worked out for the old place after a jump. Workspace tab switches
+   also restore the workspace's last scroll. Pending restores are cancelled when navigation supersedes them or the reader uses the wheel, keyboard, pointer or touch input. Ready cached positions restore in a layout effect before paint. Guide, Changes and individual file surfaces keep separate scroll positions; returning from Settings restores the remounted canvas.
 4. **The file diffs stay mounted** (hidden) while a whole file shows, so they keep their scroll and the files they read.
 5. **A thread destination is a location too.** It selects the entry's view or recorded range and enables Show
    Reviewed Files before scrolling. Its Viewer loads even if offscreen and opens outdated threads when needed.
    Navigation waits for the mounted annotation, and cancels the wait when superseded.
-6. **The main process takes ⌥⌘←/→** in `before-input-event`, before the page: the file tree takes them otherwise. The
+6. **Section navigation is a location.** The Navigator defaults to Guide (`view: sections`) and also offers Changes and Files; `CanvasSearch.section` identifies a section anchor in the current view. Picks scroll below the toolbar; Back/Forward restores the saved position.
+7. **The main process takes ⌥⌘←/→** in `before-input-event`, before the page: the file tree takes them otherwise. The
    renderer tells it whether Back and Forward can go, to grey the menu items out.
 
 ## Alternatives considered
@@ -62,3 +62,13 @@ drawn after they're read.
 - Screens (Settings, Projects, New Workspace) are still `screen` state in `App.tsx`, outside the history.
 - The scroll restore depends on the DOM: file diffs found by their `diff:<path>` id, and a retry against the
   Virtualizer. A change in Pierre's layout can break it quietly.
+
+Closed workspace tabs persist in per-workspace SQLite settings. Startup waits for that preference before choosing open tabs; explicit reopening (including history navigation) clears the closed preference. Closing the active tab navigates to a neighboring open tab, or the empty workspace screen. Guide scroll and reading-marker memory remains per-window.
+
+Visited Changes/Files sidebar trees remain mounted within the current workspace, preserving expansion and scroll when switching Guide/Changes/Files. Switching workspaces releases these tree models; this is not an unbounded workspace cache.
+
+Saved Guide workspace selections prepare their immutable range, entries, review state and first cards before committing navigation; this is a renderer query-cache read through the existing preload API, with no GitHub wait or separate background runner. A request sequence cancels obsolete switch completions. Previously read cards retain query-owned Pierre file identities and start from cache when remounted, avoiding lazy placeholder flashes.
+
+Guide, Changes and Files retain separate mounted canvas surfaces within the active workspace. Inactive canvases preserve layout dimensions and Pierre instances using visibility/inert rather than display:none or unmounting. At most three surfaces live in this boundary; switching workspace releases them. A first visit stages visible pending code rows before presenting the destination, bounded to 30 animation frames so an error cannot trap navigation. Anchor/thread lookup is scoped to the requested canvas, and Find excludes visibility-hidden targets, since file/section ids can exist in both surfaces. Collapsed reviewed cards render their header without fetching offscreen contents.
+
+Files records its ordered file tabs and last active file in CanvasSearch alongside the selected path/revision. Opening and closing tabs navigates the router, so Back/Forward includes tab changes and each workspace location retains its editor selection. This is per-window session state, with no SQLite or browser storage added. Only the active file Viewer is mounted inside the retained Files surface; query-cached file contents and existing per-file scroll restoration handle tab returns.

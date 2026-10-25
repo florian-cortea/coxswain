@@ -82,7 +82,7 @@ export function Projects({ projects, current, start, onSelect, onAdded, onClose 
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Search projects and repositories"
       />
-      <div className={cn("flex shrink-0 items-center gap-2 border-b px-4 py-2.5", divider)}>
+      <div className={cn("flex shrink-0 flex-wrap items-center gap-2 border-b px-5 py-3", divider)}>
         <Button className="text-xs" onClick={() => void addLocal()}>
           Add Local Repository…
         </Button>

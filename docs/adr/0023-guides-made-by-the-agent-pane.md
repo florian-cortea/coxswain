@@ -1,6 +1,4 @@
-# 23. Guides are made by the agent pane's session, with coxswain's tools
-
-Date: 2026-09-27
+# 23. One Guide per workspace
 
 ## Status
 
@@ -8,83 +6,26 @@ Accepted
 
 ## Context
 
-A guide (glossary) groups a PR's file diffs by theme, in reading order, so the user can review it top to bottom. A
-fixed pipeline in the core (summarise each file, group, describe each group) can't be steered ("focus on the API",
-"skip the tests"), can't look anything up in the repo, and can point only at whole files. The agent pane's session
-can do all of that already; it lacks only a way to put what it finds on the canvas.
-
-The user also wants the agent to be able to review, not just guide: a guide only helps the user read, a review adds
-the agent's own thoughts. Reviewing is opt-in.
+The Guide explains changes beside their code. Multiple saved documents with repeated Guide titles make updates ambiguous and add navigation that the reading workflow does not need.
 
 ## Decision
 
-1. **The agent pane's sessions get coxswain's tools.** The local HTTP MCP server
-   ([ADR 0018](0018-agents-over-acp.md), 2) serves a stable path per workspace, `coxswain`, given to every agent pane
-   session when it's opened, resumed or loaded, and allowed without asking (`mcp__coxswain`). Its tools:
-   - `start_view`: a new view, a guide or another kind, pinned to the merge base → a snapshot of the worktree,
-     local changes included ([ADR 0028](0028-branch-workspaces-and-snapshots.md)), or to the `base` and `head`
-     commits given: one commit, an agent turn, what's on GitHub, or GitHub's head → the worktree for the local
-     changes. Returns the range, the changed files, how to read source files, and how to write a good view; no changes are required.
-   - `write_section`: appends a section of markdown to a view, or replaces one. What a view holds is in
-     [ADR 0026](0026-views-in-markdown-with-mermaid.md); embedded diff paths are checked against the changed files and source paths against the snapshot,
-     and a file is embedded once.
-   - `remove_section`: removes a section from a view. It and `write_section` change a view one at a time
-     ([ADR 0029](0029-file-summaries-and-activity.md)). `write_section` takes several sections at once, and
-     `add_explanation` and `add_finding` several of theirs: one call for many.
-   - Every tool says what it does in MCP's annotations: `list_views` and `file_summaries` only read; the rest write
-     only coxswain's views and entries (not destructive, not open-world), but `remove_section` is destructive. Codex's
-     auto-review looks at every call to a tool that doesn't say so, about 2.5 s each.
-   - `file_summaries`: the file summaries of a view's changed files, which `start_view` lists too
-     ([ADR 0029](0029-file-summaries-and-activity.md)); it can wait for those being written.
-   - `list_views`: the workspace's views, with their ids, titles, ranges and section headings.
-   - `add_explanation`: an explanation (glossary) on lines of the view's range.
-   - `add_finding`: a finding (glossary) on lines, the agent's own concern or suggestion. Its description says to use
-     it only when the user asked for a review.
-     The tools that write take the view's id (`view`, returned by `start_view` and listed by `list_views`) and write to
-     the workspace's latest view without it, so an older view can be changed and two sessions each keep to their own.
-     A short text appended to Claude Code's system prompt (`paneContext`) tells the agent it runs in coxswain, what the
-     comment and review headers mean, and what the tools are for; how to use each stays in its description and result.
-2. **Any message can make a view.** "Make me a guide" or "show me the data model" works, since the tools are always
-   there. _New View_ in the canvas's bar also offers view prompts ([ADR 0031](0031-view-prompts.md)): built-in ones
-   (a guide, a review, questions for the author, a data model, a data flow), the user's own, and _New View…_. The one
-   picked is attached to the agent pane's composer, sent with what the user types as the message's focus. While the
-   diff shows a commit, a turn or a scope other than _All_, the prompt starts with that range ("For commit
-   1c8d547 (…) only (start_view with base … and head …): …") and the menu names it; the pane's instructions say to
-   pass it on. How to guide
-   lives in `start_view`'s result, not in a setting.
-3. **Views show on the canvas.** A view shown puts its sections in order, and for a guide the files it doesn't embed
-   after them under _Not in the guide_. Explanations and findings are entries (kinds `explanation`, `finding`) with the
-   view's id, shown as threads between the lines only while their view is shown, so the user can reply or send them
-   back to the agent.
-4. **Views stay pinned and are kept until the user removes them.** A view shows its range (merge base → head then),
-   like a commit diff, not the live worktree; once the worktree moves on (its snapshot changes) a view of the
-   worktree is _stale_. A view pinned to commits (`views.worktree` 0) never is. Every view is kept and can be
-   shown again from its chip in the canvas bar, for going back or for debugging. Removing one is the user's choice:
-   right-click its chip → _Remove View…_, confirmed, deletes it with its explanations and findings (`entries.view_id`
-   cascades). The agent can't remove a view. The newest is shown when it appears, and on opening a workspace if it
-   isn't stale.
-   A view is _being written_ (glossary) from a tool's change to it (starting it, a section, an explanation or a
-   finding) until the workspace's turn ends, however it ends. There's no tool to finish a view: the agent could forget
-   to call it or be stopped first, and the turn's end is known anyway. It's kept in memory in the core, not in
-   `views`: after a restart no turn runs. Changing an older view makes it being written again. The tools don't know
-   which session calls them, so any turn of the workspace ending finishes all its views.
-5. **Reviewed carries over between views** for file diffs that didn't change
-   ([ADR 0014](0014-reviewed-follows-file-diff-contents.md)).
+Each workspace has one Guide with a stable identity. Opening it starts a Guide job; worktree and GitHub events refresh it through the existing background runner (ADR 0038). A complete validated replacement updates the existing record in one transaction. The previous content remains readable during generation; failed or superseded jobs leave it intact. Guide agent/model/effort defaults are configurable in Settings and remembered per agent. Without an explicit Guide choice, use Claude Code with the adapter’s Opus choice (currently Opus 5.5); retired summary preferences no longer supply Guide defaults.
+
+Update Guide opens a dialog for optional focus/style instructions. They are stored in core SQLite settings per workspace, used for manual and automatic updates, and cleared by submitting empty text. The dialog also offers agent, model and effort overrides for this update only. Switching agent reads its saved model/effort defaults without changing the configured Guide agent. Undefined selections inherit App Settings; empty strings explicitly use agent defaults. Overrides travel on the core guide event to the existing job runner, survive coalescing and retries, and are not persisted as defaults. Model-specific effort choices are discovered in a temporary agent session without changing Chat choices; unsupported explicit effort fails clearly. Discovery results deduplicate and cache for five minutes; session teardown runs after returning options, and the model catalog stays usable while effort choices load. Manual requests force a run even at the same range and supersede an active generation. Activity and the Guide sidebar show progress, failure and retry.
+
+The canvas offers Guide, Changes, Files and the PR overview. There is no saved View library, New View action, repeated Guide titles, View removal or saved View prompt library. Legacy rows remain inert in SQLite without a destructive migration; the latest existing Guide is adopted and subsequent updates reuse it. Internal `views`/`view_id` names remain storage details for compatibility with entries and history.
+
+Agent tools `start_guide`, `write_section`, `remove_section`, `read_guide`, `list_changed_files`, `add_explanation` and `add_finding` write to the same workspace Guide. `start_guide` resets it for interactive writing; the automatic runner publishes atomically. Findings remain opt-in. Source/diff embedding uses ADR 0026; immutable snapshots preserve code and review marks (ADR 0028, ADR 0014).
 
 ## Alternatives considered
 
-- **A fixed pipeline of one-shot runs** (summaries, grouping, descriptions). Fast and predictable, but unsteerable
-  and file-level only.
-- **The agent writes the whole guide in one answer schema.** One call can't grow the guide as it reads; nothing shows
-  until it's done, and a big PR won't fit one answer.
-- **Explanations as a guide field, not entries.** They'd need their own rendering and couldn't be replied to; entries
-  get threads, outdated handling and _Send to agent_ for free.
-- **Show guides on the live diff.** Line numbers drift as the agent edits; the pinned range keeps explanations where
-  they were written, and the user asked to keep guides pinned.
+- Keep numbered Guide versions in the navigation: obscures which document is current.
+- Delete old records through a migration: unnecessarily removes historic entry anchors.
+- Generate manual updates through chat: couples Guide customization to a conversation and leaves automatic refresh without the requested style.
 
 ## Consequences
 
-- A guide costs what the agent pane's session costs, on its model, and fills in as the agent calls the tools.
-- A guide is made in whichever session the agent pane talks to; its reasoning stays in that transcript.
-- Two sessions making views at once keep apart only if the agent passes `view`; without it, both write to the newest.
-- Views include local changes through their pinned snapshot (ADR 0028).
+A Guide update changes its content and pinned range while preserving its identity. File review marks remain keyed to contents. Legacy documents and saved prompts are no longer exposed in the UI. Custom focus applies to later automatic updates until changed. The bounded diff-evidence limit for very large changes remains documented in the generator.
+
+The default Guide prompt groups implementation thematically, followed by a dedicated Tests section and a dedicated Generated section, omitting empty groups. File group metadata uses the same shared path classifier as Changes.

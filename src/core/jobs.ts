@@ -1,20 +1,18 @@
 import type { Db } from "./db";
-import { emit } from "./events.ts";
 import { openedWorktree } from "./git.ts";
 import { getWorkspaceRepo } from "./workspaces.ts";
 
 // ADR 0038: background jobs, the one way coxswain does work nobody waits for. A job is some items of one workspace
 // for the summary agent (a small model, in Settings): it runs them in batches, retries, stores each answer as it
 // comes, and is a row of `jobs`, which Activity shows. What a job is about is its kind's own business (JobSpec):
-// file summaries (summaries.ts) and an agent thread summarized as a comment (review-draft.ts). What starts one is in background.ts.
+// guides (guides.ts) and agent threads summarized as comments (review-draft.ts). What starts one is in background.ts.
 
 export type SummaryAgent = "claude" | "codex";
-// model: "" is the agent's own default. ahead: do the work when things change (a workspace opened, its HEAD
-// moved), not only when something asks for it.
-export type SummarySettings = { agent: SummaryAgent; model: string; ahead: boolean };
-const defaultModel: Record<SummaryAgent, string> = { claude: "haiku", codex: "" };
+// model: "" is the agent's own default. Legacy summary preferences still supply comment-summary jobs.
+export type SummarySettings = { agent: SummaryAgent; model: string; effort?: string };
+const defaultModel: Record<SummaryAgent, string> = { claude: "opus", codex: "" };
 
-// kind: what its items are, file diffs to summarise or "conclusions", agent threads to summarize as comments. why:
+// kind: guide generation or agent-thread conclusions; "files" remains readable for historical job rows. why:
 // "ahead", something changed; "view", a view was started; "comment", Summarize as Comment; "submit", Submit Review
 // opened, from before comments went as written. base, head: the range of a files job, "" otherwise. model: as asked
 // for; ranOn: what the agent says it ran. items: all it was about; reused: had an answer already, or another job is
@@ -22,7 +20,7 @@ const defaultModel: Record<SummaryAgent, string> = { claude: "haiku", codex: "" 
 // the runs going on. error: the last one, even if a retry then worked.
 export type Job = {
   id: number;
-  kind: "files" | "conclusions";
+  kind: "files" | "conclusions" | "guide";
   workspaceId: number;
   workspace: string;
   why: "ahead" | "view" | "submit" | "comment";
@@ -48,6 +46,7 @@ export type Job = {
 export type SummaryRun = {
   agent: SummaryAgent;
   model: string;
+  effort?: string;
   cwd: string;
   prompt: string;
   instructions: string;
@@ -92,15 +91,10 @@ const sleep = (ms: number, signal: AbortSignal) =>
 // too.
 const live = new Map<number, Job>();
 export const runningJobs = () => [...live.values()];
-// The agent and model of the last job that failed in a way trying again can't fix: work ahead waits until the
-// settings change, rather than failing again each time something changes. Work that was asked for still tries, and
-// shows the error.
-let failedWith: string | null = null;
-export const aheadIsOff = (s: SummarySettings) => !s.ahead || failedWith === settingsKey(s);
 // The agent and model of the last run that worked: until one has, a job sends one run first, so a wrong model fails
 // once and not once per slot.
 let workedWith: string | null = null;
-const settingsKey = (s: Pick<SummarySettings, "agent" | "model">) => `${s.agent}\0${s.model}`;
+const settingsKey = (s: SummarySettings) => `${s.agent}\0${s.model}\0${s.effort ?? ""}`;
 const stops = new Map<number, AbortController>();
 
 const listeners = new Set<(jobs: Job[]) => void>();
@@ -247,15 +241,20 @@ export async function failJob(
   db: Db,
   spec: Pick<Job, "kind" | "workspaceId" | "why" | "base" | "head">,
   error: string,
+  selected?: SummarySettings,
 ): Promise<Job> {
-  const job = await newJob(db, spec, await getSummarySettings(db));
+  const job = await newJob(db, spec, selected ?? (await getSummarySettings(db)));
   return finish(db, await add(db, job), "failed", error);
 }
 
 // Starts a job and returns it at once; it goes on in the background. Never throws once started: what goes wrong is
 // the job's error.
-export async function startJob<T>(db: Db, spec: JobSpec<T>): Promise<Job> {
-  const settings = await getSummarySettings(db);
+export async function startJob<T>(
+  db: Db,
+  spec: JobSpec<T>,
+  selected?: SummarySettings,
+): Promise<Job> {
+  const settings = selected ?? (await getSummarySettings(db));
   const job = await newJob(db, spec, settings);
   job.items = spec.total;
   job.reused = spec.reused;
@@ -279,7 +278,6 @@ async function work<T>(
   settings: SummarySettings,
 ) {
   let fatal: string | null = null;
-  let agentFailed = false;
   const save = async (m: T, answer: string, by: string) => {
     await spec.save(m, answer, by);
     job.done++;
@@ -309,6 +307,7 @@ async function work<T>(
         const out = await runner({
           agent: settings.agent,
           model: settings.model,
+          effort: settings.effort,
           cwd,
           prompt,
           instructions,
@@ -334,7 +333,6 @@ async function work<T>(
         job.error = (e as Error).message;
         if ((e as { fatal?: boolean }).fatal) {
           fatal = job.error;
-          agentFailed = true;
           stop.abort();
           return;
         }
@@ -365,7 +363,6 @@ async function work<T>(
   }
   const left = spec.items.length - job.done - job.failed;
   if (fatal) {
-    if (agentFailed) failedWith = settingsKey(settings);
     await finish(db, job, "failed", fatal);
   } else if (stop.signal.aborted || left > 0) await finish(db, job, "stopped", job.error);
   else await finish(db, job, job.failed && !job.done ? "failed" : "done", job.error);
@@ -441,25 +438,5 @@ export async function getSummarySettings(db: Db): Promise<SummarySettings> {
   return {
     agent,
     model: get(`summaries.model.${agent}`) ?? defaultModel[agent],
-    ahead: get("summaries.ahead") !== "off",
   };
-}
-
-// Changes what's given. The model is kept per agent, the current one unless agent is given too, so switching agents
-// finds the model picked for each before.
-export async function setSummarySettings(db: Db, s: Partial<SummarySettings>) {
-  const set = (key: string, value: string) =>
-    db
-      .insertInto("settings")
-      .values({ key, value })
-      .onConflict((oc) => oc.column("key").doUpdateSet({ value }))
-      .execute();
-  if (s.agent) await set("summaries.agent", s.agent);
-  if (s.model !== undefined) {
-    const agent = s.agent ?? (await getSummarySettings(db)).agent;
-    await set(`summaries.model.${agent}`, s.model.trim());
-  }
-  if (s.ahead !== undefined) await set("summaries.ahead", s.ahead ? "on" : "off");
-  failedWith = null;
-  emit({ what: "settings" });
 }

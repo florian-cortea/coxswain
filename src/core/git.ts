@@ -705,16 +705,21 @@ function countLines(file: string): number {
 export function listWorktreeFiles(db: Db, workspaceId: number): Promise<FileTreeResult> {
   return withGit(async () => {
     const path = await openedWorktree(db, workspaceId);
-    const out = await gitText(path, [
-      "ls-files",
-      "-z",
-      "--cached",
-      "--others",
-      "--exclude-standard",
-      "--deduplicate",
+    // Git already knows which tracked files were deleted. Avoid one synchronous stat per repository file
+    // in Electron's main process, which stalls native controls on large repositories.
+    const [out, removed] = await Promise.all([
+      gitText(path, [
+        "ls-files",
+        "-z",
+        "--cached",
+        "--others",
+        "--exclude-standard",
+        "--deduplicate",
+      ]),
+      gitText(path, ["ls-files", "-z", "--deleted"]),
     ]);
-    // A file deleted in the worktree is still in the index until the deletion is staged.
-    const paths = out.split("\0").filter((p) => p && existsSync(join(path, p)));
+    const deleted = new Set(removed.split("\0"));
+    const paths = out.split("\0").filter((p) => p && !deleted.has(p));
     return { status: "ok" as const, paths };
   });
 }

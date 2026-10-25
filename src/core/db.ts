@@ -311,7 +311,7 @@ type Tables = {
   reviewed_files: { workspace_id: number; path: string; fingerprint: string };
   jobs: {
     id: Generated<number>;
-    kind: "files" | "conclusions";
+    kind: "files" | "conclusions" | "guide";
     workspace_id: number;
     workspace: string;
     why: "ahead" | "view" | "submit" | "comment";
@@ -339,14 +339,6 @@ type Tables = {
     conclusion: string;
     model: string;
     edited: number;
-    created_at: string;
-  };
-  file_summaries: {
-    workspace_id: number;
-    path: string;
-    fingerprint: string;
-    summary: string;
-    model: string;
     created_at: string;
   };
   views: {

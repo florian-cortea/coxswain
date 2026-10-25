@@ -258,6 +258,7 @@ export type Check = {
   jobId: number | null;
 };
 export type GitHubComment = {
+  authorIsBot?: boolean;
   id: string;
   author: string;
   body: string;
@@ -319,20 +320,20 @@ export type PullRequestResult = PullRequestDetails | GitHubProblem;
 // them and takes what it doesn't find for deleted. ponytail: the first 100 comments of a thread (a longer one isn't
 // pruned, see ReviewThread.complete), commits and checks; page them if PRs grow past that.
 const threadFields = `id isResolved path diffSide subjectType originalLine originalStartLine
-  comments(first: 100) { pageInfo { hasNextPage } nodes { id author { login } body createdAt url originalCommit { oid } } }`;
+  comments(first: 100) { pageInfo { hasNextPage } nodes { id author { login __typename } body createdAt url originalCommit { oid } } }`;
 const pullRequestQuery = `query($owner: String!, $name: String!, $number: Int!) {
   viewer { login id }
   repository(owner: $owner, name: $name) {
     mergeCommitAllowed squashMergeAllowed rebaseMergeAllowed
     pullRequest(number: $number) {
       id number title body url state isDraft mergeable mergeStateStatus viewerCanUpdate
-      author { login } baseRefName headRefName headRefOid
+      author { login __typename } baseRefName headRefName headRefOid
       assignees(first: 20) { nodes { login } }
       labels(first: 20) { nodes { name color } }
       reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } ... on Team { name } ... on Bot { login } } } }
-      latestReviews(first: 20) { nodes { author { login } state } }
-      comments(first: 100) { pageInfo { hasNextPage endCursor } nodes { id author { login } body createdAt url } }
-      reviews(last: 50) { nodes { id author { login } body state submittedAt createdAt url } }
+      latestReviews(first: 20) { nodes { author { login __typename } state } }
+      comments(first: 100) { pageInfo { hasNextPage endCursor } nodes { id author { login __typename } body createdAt url } }
+      reviews(last: 50) { nodes { id author { login __typename } body state submittedAt createdAt url } }
       reviewThreads(first: 100) { pageInfo { hasNextPage endCursor } nodes { ${threadFields} } }
       commits(last: 100) { nodes { commit { oid statusCheckRollup { state } } } }
       headCommit: commits(last: 1) { nodes { commit {
@@ -347,7 +348,7 @@ const pullRequestQuery = `query($owner: String!, $name: String!, $number: Int!) 
   }
 }`;
 
-type Login = { login: string } | null;
+type Login = { login: string; __typename?: "User" | "Bot" | "Organization" } | null;
 // GitHub's enums for checks, as its GraphQL schema has them: a commit's or rollup's state (StatusState), and a check
 // run's status (CheckStatusState) and conclusion (CheckConclusionState).
 type StatusState = "SUCCESS" | "FAILURE" | "ERROR" | "PENDING" | "EXPECTED";
@@ -450,6 +451,7 @@ type RawPullRequest = {
 const comment = (c: RawComment): GitHubComment => ({
   id: c.id,
   author: c.author?.login ?? "ghost",
+  ...(c.author?.__typename === "Bot" ? { authorIsBot: true } : {}),
   body: c.body,
   createdAt: c.createdAt,
   url: c.url,
@@ -603,7 +605,7 @@ export function getPullRequest(
       pr.reviewThreads.nodes = await more("reviewThreads", threadFields, pr.reviewThreads);
       pr.comments.nodes = await more(
         "comments",
-        "id author { login } body createdAt url",
+        "id author { login __typename } body createdAt url",
         pr.comments,
       );
     }

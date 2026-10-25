@@ -30,6 +30,9 @@ We use the Pierre libraries for the review screen and for file exploration:
   diffs.
 - **File tree: `@pierre/trees`**, which is built for trees of about a million entries. The core
   watches files with `@parcel/watcher`.
+- Guide and tree rows share React filename/path labels and highlight CSS. Pierre retains the
+  tree model and virtualization; a mounted-row adapter provides label hosts until interactive
+  row slots are supported. This avoids painted truncation masks covering row highlights.
 - **Search across files: `@vscode/ripgrep`**, run in the core.
 
 **Code navigation is by name, for now.** Go to Definition uses `@pierre/diffs`' token callbacks
@@ -40,6 +43,8 @@ is blobless, so grepping a commit would fetch every blob. When that isn't good e
 servers run in the core, and `@pierre/diffs` ships a text document type compatible with VS Code's
 language-server tools; that will be a new ADR. Hover and full editing are deferred;
 the editing mode in `@pierre/diffs` is still in beta.
+
+Large Files trees prepare ordering in a renderer Web Worker using Pierre’s public `prepareFileTreeInput` API. Only its sorted public paths cross the worker boundary; the UI creates `preparePresortedFileTreeInput` and the live model. Query-cache ownership reuses preparation across remounts and releases inactive results normally. Small trees build directly. Worker failure falls back to the normal library path. Git enumeration remains in the core; the worker does presentation only. No custom comparator or private Pierre serialization is used.
 
 ## Alternatives considered
 
@@ -71,3 +76,7 @@ the editing mode in `@pierre/diffs` is still in beta.
   `@pierre/diffs`, or add CodeMirror as an editor view. That will be a new ADR.
 - Because file watching, search and future language servers all live in the core, they work for a
   web version the same way they do for the app.
+
+Changes uses Pierre’s public model projection for hierarchy, natural ordering, flattened directories, expansion and keyboard focus, rendering file/thread groups with the same React SidebarFileThreads as Guide. This allows variable-height thread pills below their file; the full-repository Files pane retains Pierre’s virtualized renderer and worker preparation. Changes groups are not yet windowed by measured height; very large change lists may need that extension.
+
+Files presents the existing Pierre File renderer edge-to-edge below a file-tab strip instead of wrapping whole files in review cards. Guide and Changes retain their card presentation. Shared file reads, syntax themes, Find and line-annotation interactions remain in Viewer; an editor presentation flag removes only card chrome and margins.

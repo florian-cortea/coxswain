@@ -2,48 +2,74 @@ import { Virtualizer } from "@pierre/diffs/react";
 import { match, P } from "ts-pattern";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation, useNavigate, useRouter, useSearch } from "@tanstack/react-router";
-import { type UIEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type UIEvent,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { Commit } from "../../core/git";
 import type { PullRequest } from "../../core/github";
 import type { NewEntry, ReviewEntry } from "../../core/review";
-import type { AttachedPrompt, Prompt, View, ViewRange } from "../../core/views";
+import type { View } from "../../core/views";
 import type { Workspace } from "../../core/workspaces";
+import type { GuideOverride } from "../../core/guides";
+import { GuideRunOptions } from "./components/GuideRunOptions";
+import { Activity } from "./Activity";
 import { Agents } from "./Agents";
 import { FindBar } from "./FindBar";
 import { activateFindPane, closeFind, nextFind, openFind } from "./find";
 import { upsert } from "./ChatEntry";
-import {
-  CanvasBar,
-  HistoryBar,
-  type HistoryTab,
-  PaneBar,
-  type PaneTab,
-  viewTitles,
-} from "./CanvasBar";
+import { HistoryBar, type HistoryTab, PaneBar, type PaneTab } from "./CanvasBar";
 import { type Action, CommandPalette } from "./CommandPalette";
 import { Commits, Turns } from "./Commits";
 import { Button } from "./components/button";
-import { Centered, Splitter, viewerMin } from "./components/layout";
-import { cn, divider, muted, titleBar } from "./components/styles";
-import { Navigator, type NavigatorView } from "./Navigator";
+import { NativeToolbar, useNativeOcclusion } from "./components/NativeToolbar";
+import { TextArea } from "./components/field";
+import {
+  canvasElement,
+  canvasScroller,
+  restoreScroll,
+  type Scroll,
+} from "./components/restore-scroll";
+import { ErrorText } from "./components/text";
+import {
+  Centered,
+  Dialog,
+  DialogBody,
+  DialogFooter,
+  Splitter,
+  viewerMin,
+} from "./components/layout";
+import { cn, divider, muted, reviewCard, reviewGutter, titleBar } from "./components/styles";
+import { prepareGuide } from "./prepare-guide";
+import { RetainedCanvas } from "./components/RetainedCanvas";
+import { RetainedNavigator } from "./Navigator";
+import { botLogin } from "../../shared/guide-authors";
+import { Sections } from "./Sections";
 import { NewWorkspace } from "./NewWorkspace";
 import { Onboarding } from "./Onboarding";
 import { Projects } from "./Projects";
 import { defaultViewId, threadLocation, type CanvasSearch } from "./canvas-state";
 import { core, markReviewed as mark, queryClient } from "./queries";
 import { Settings } from "./Settings";
-import { projectLabel, workspaceLabel } from "./format";
+import { isComment, projectLabel, workspaceLabel, threadAuthor } from "./format";
 import { Setup } from "./Setup";
-import { StatusBar } from "./StatusBar";
+import { SubmitReviewDialog } from "./SubmitReview";
 import { usePullRequest } from "./usePullRequest";
 import { SpinnerIcon } from "./components/icons";
 import { ProseThreads } from "./ProseThreads";
 import { PullRequestPanel } from "./PullRequest";
-import { viewDiff, ViewProse, ViewSectionHeader } from "./ViewSection";
-import { ViewToc } from "./ViewToc";
-import type { ViewSettings } from "../../preload";
+import { ViewProse, ViewSectionHeader } from "./ViewSection";
+import { GuideExplanation } from "./components/GuideExplanation";
+import type { ViewSettings, GuideOptions } from "../../preload";
 import { openedPath, type Opened, type Turn, Viewer } from "./Viewer";
-import { WorkspaceRail } from "./WorkspaceRail";
+import { WorkspaceTabs } from "./WorkspaceTabs";
+import { FileTabs } from "./FileTabs";
+import { closeEditorFile, fileTabsOf, openEditorFile } from "./file-tabs";
 
 // Stable empty lists: a new [] each render would redraw the memoised Viewers.
 const noEntries: ReviewEntry[] = [];
@@ -57,13 +83,7 @@ export function App() {
   const search = useSearch({ from: "__root__" });
   const workspaceLocations = useRef(new Map<number, CanvasSearch>());
   const [screen, setScreen] = useState<
-    | "main"
-    | "settings"
-    | "new-prompt"
-    | "projects"
-    | "projects-add-local"
-    | "projects-create"
-    | "new-workspace"
+    "main" | "settings" | "projects" | "projects-add-local" | "projects-create" | "new-workspace"
   >("main");
   const close = () => setScreen("main");
 
@@ -76,27 +96,40 @@ export function App() {
   };
 
   // ponytail: pane widths reset on restart; persist them in SQLite once a settings table exists.
-  const [leftWidth, setLeftWidth] = useState(416);
+  const [leftWidth, setLeftWidth] = useState(336);
   const [agentsWidth, setAgentsWidth] = useState(416);
-  // L1, the workspace sidebar: shown until hidden with its button, back with the agent pane's. ponytail: resets on
-  // restart, like the pane widths.
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  // L4, the agent pane: hidden with its button, back with the one at the window's left of the canvas side. Kept in
-  // the core, across restarts.
-  const agentsOpen = useQuery(core("getAgentPaneOpen")).data ?? true;
+  // Chat is secondary to the canvas, collapsed by default; an explicit choice survives restarts.
+  const agentsOpen = useQuery(core("getAgentPaneOpen")).data ?? false;
   const setAgentsOpen = (open: boolean) => {
     queryClient.setQueryData(core("getAgentPaneOpen").queryKey, open);
     void window.coxswain.setAgentPaneOpen(open);
   };
-  const showAgents = agentsOpen
-    ? undefined
-    : { onShow: () => setAgentsOpen(true), inset: !sidebarOpen };
   // The pane on the left of the canvas, under its own bar: the Navigator on top, the commits or the agent turns below.
-  // Starts hidden. The bottom half collapses to its bar, at the pane's bottom.
-  const [paneOpen, setPaneOpen] = useState(false);
+  // Starts open, with history collapsed to its bar at the pane’s bottom.
+  const [paneOpen, setPaneOpen] = useState(true);
   const [history, setHistory] = useState<HistoryTab>("commits");
-  const [historyOpen, setHistoryOpen] = useState(true);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [groupChanges, setGroupChanges] = useState(true);
+  // ponytail: like pane widths, this height resets on restart; store pane geometry together in SQLite.
+  const [historyHeight, setHistoryHeight] = useState<number | null>(null);
+  const [guideOptions, setGuideOptions] = useState<GuideOptions>({
+    showResolved: true,
+    showReviewedFiles: true,
+    onlyFilesWithThreads: false,
+    showAgentThreads: true,
+    showComments: true,
+    hiddenAuthors: [],
+    shownAuthors: [],
+  });
+  useEffect(() => {
+    if (agentsOpen) activateFindPane("chat");
+  }, [agentsOpen]);
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewNotice, setReviewNotice] = useState<string | null>(null);
+  const [sendingReview, setSendingReview] = useState(false);
+
   const showHistory = (t: HistoryTab) => {
+    pickPaneTab("diffs");
     setHistory(t);
     setHistoryOpen(true);
     setPaneOpen(true);
@@ -106,21 +139,52 @@ export function App() {
     paneOpen && historyOpen && history === t ? setHistoryOpen(false) : showHistory(t);
 
   // ponytail: resets on restart, like the Navigator's settings; store them once there's a settings table.
+  const [activityOpen, setActivityOpen] = useState(false);
   const [viewSettings, setViewSettings] = useState<ViewSettings>({
     diffStyle: "unified",
-    showReviewed: false,
+    showReviewed: true,
     layout: "tree",
   });
   const workspaces =
     useQuery({ ...core("listWorkspaces", current?.id ?? 0), enabled: !!current }).data ?? [];
-  const latestWorkspace = workspaces.reduce<Workspace | undefined>(
+  const closedTabQuery = useQuery(core("getClosedWorkspaceTabs"));
+  const closedTabs = new Set(closedTabQuery.data ?? []);
+  const changeTab = (id: number, open: boolean) => {
+    const key = core("getClosedWorkspaceTabs").queryKey;
+    const before = queryClient.getQueryData<number[]>(key) ?? [];
+    queryClient.setQueryData(
+      key,
+      open ? before.filter((tab) => tab !== id) : [...new Set([...before, id])],
+    );
+    void window.coxswain
+      .setWorkspaceTabOpen(id, open)
+      .catch(() => queryClient.setQueryData(key, before));
+  };
+  const openWorkspaces = closedTabQuery.data ? workspaces.filter((w) => !closedTabs.has(w.id)) : [];
+  const latestWorkspace = openWorkspaces.reduce<Workspace | undefined>(
     (latest, w) => (!latest || w.lastOpenedAt > latest.lastOpenedAt ? w : latest),
     undefined,
   );
-  const currentWorkspace = workspaces.find((w) => w.id === search.ws) ?? latestWorkspace;
-  const selectWorkspace = (id: number) => {
+  const currentWorkspace = openWorkspaces.find((w) => w.id === search.ws) ?? latestWorkspace;
+  const tabRequest = useRef(0);
+  const selectWorkspace = async (id: number) => {
+    const request = ++tabRequest.current;
+    const destination = workspaceLocations.current.get(id) ?? { ws: id };
+    await prepareGuide(id, destination).catch(() => {});
+    if (request !== tabRequest.current) return;
+    if (closedTabs.has(id)) changeTab(id, true);
     close();
-    return navigate({ to: "/", search: workspaceLocations.current.get(id) ?? { ws: id } });
+    return navigate({ to: "/", search: destination });
+  };
+  const closeWorkspaceTab = (w: Workspace) => {
+    tabRequest.current++;
+    changeTab(w.id, false);
+    if (w.id !== currentWorkspace?.id) return;
+    const index = openWorkspaces.findIndex((tab) => tab.id === w.id);
+    const remaining = openWorkspaces.filter((tab) => tab.id !== w.id);
+    const next = remaining[Math.min(index, remaining.length - 1)];
+    if (next) void selectWorkspace(next.id);
+    else void navigate({ to: "/", search: {} });
   };
   const opening = async (open: Promise<Workspace>) => {
     const workspace = await open;
@@ -140,7 +204,7 @@ export function App() {
   // The workspace's entries, reviewed files and agent sessions go with it; its worktree stays on disk.
   const removeWorkspace = async (w: Workspace) => {
     const ok = await window.coxswain.confirm({
-      message: `Remove ${workspaceLabel(w)} from the sidebar?`,
+      message: `Remove ${workspaceLabel(w)} from the workspace tabs?`,
       detail: `Its comments, reviewed files and agent sessions are deleted. The worktree stays on disk, and adding the ${w.prNumber !== null ? "PR" : "branch"} again reuses it.`,
       action: "Remove",
     });
@@ -170,14 +234,27 @@ export function App() {
     [router],
   );
   const moved = lastAction.current !== "PUSH" && lastAction.current !== "REPLACE";
+  useEffect(() => {
+    const id = search.ws;
+    if (!moved || !id || !closedTabs.has(id)) return;
+    changeTab(id, true);
+  }, [moved, search.ws]);
   // A new entry with these changes to what the canvas shows. Stable, so the memoised Viewers don't redraw.
   const show = useCallback(
-    (changes: CanvasSearch, replace = false) =>
-      navigate({
+    (changes: CanvasSearch, replace = false) => {
+      tabRequest.current++;
+      return navigate({
         to: "/",
-        search: { ...shown.current, thread: undefined, pr: undefined, ...changes },
+        search: {
+          ...shown.current,
+          thread: undefined,
+          pr: undefined,
+          section: undefined,
+          ...changes,
+        },
         replace,
-      }),
+      });
+    },
     [navigate],
   );
   const canBack = location.state.__TSR_index > 0;
@@ -185,13 +262,14 @@ export function App() {
   useEffect(() => window.coxswain.setNavigation(canBack, canForward), [canBack, canForward]);
   // Initial project load (or removal of the selected workspace) uses its last opened workspace.
   useEffect(() => {
+    if (moved && search.ws && closedTabs.has(search.ws)) return;
     if (currentWorkspace && search.ws !== currentWorkspace.id)
       void navigate({
         to: "/",
         search: workspaceLocations.current.get(currentWorkspace.id) ?? { ws: currentWorkspace.id },
         replace: true,
       });
-  }, [currentWorkspace?.id, search.ws]);
+  }, [currentWorkspace?.id, search.ws, moved]);
   useEffect(() => {
     if (search.ws === currentWorkspace?.id && search.ws !== undefined)
       workspaceLocations.current.set(search.ws, search);
@@ -201,8 +279,16 @@ export function App() {
     void window.coxswain.openWorkspace(currentWorkspace.id);
   }, [currentWorkspace?.id]);
 
-  const view: NavigatorView = s.view ?? "diffs";
-  const pr = usePullRequest(currentWorkspace);
+  const view: PaneTab = s.view ?? "sections";
+  const viewsQuery = useQuery({
+    ...core("listViews", currentWorkspace?.id ?? 0),
+    enabled: !!currentWorkspace,
+  });
+  const views = viewsQuery.data ?? (viewsQuery.isError ? noViews : undefined);
+  const pinnedGuide =
+    view === "sections" && s.viewId !== null && !s.commit && !s.scope ? views?.[0] : undefined;
+  const pr = usePullRequest(currentWorkspace, pinnedGuide);
+
   // The Commits menu: one commit's diff (its parent to it) in place of all changes. Dropped when the PR's head moves.
   const commit = s.commit ?? null;
   const head = useRef<{ ws: number; head: string } | null>(null);
@@ -215,14 +301,9 @@ export function App() {
   }, [currentWorkspace?.id, pr.commits]);
   // The view shown on the canvas (ADR 0023, 0026), or none. The newest shows when it appears, and on opening a
   // workspace if it isn't stale. A view and a commit are both a pinned range, so picking one drops the other.
-  const viewsQuery = useQuery({
-    ...core("listViews", currentWorkspace?.id ?? 0),
-    enabled: !!currentWorkspace,
-  });
-  const views = viewsQuery.data ?? (viewsQuery.isError ? noViews : undefined);
   // On opening a workspace the newest shows in place (unless one was chosen); a new view shows as an entry of its own.
   const viewId = defaultViewId(s, views, pr.snapshot, pr.snapshotReady);
-  const newest = useRef<{ workspaceId: number; id: number } | null>(null);
+  const newest = useRef<{ workspaceId: number; id: number; head?: string } | null>(null);
   useEffect(() => {
     if (!currentWorkspace || !views || !pr.commits || !pr.snapshotReady) return;
     const latest = views[0];
@@ -230,9 +311,16 @@ export function App() {
     if (newest.current?.workspaceId !== currentWorkspace.id) {
       if (now.viewId === undefined)
         void show({ viewId: defaultViewId(now, views, pr.snapshot, pr.snapshotReady) }, true);
-    } else if (latest && latest.id > newest.current.id)
-      void show({ viewId: latest.id, commit: undefined });
-    newest.current = { workspaceId: currentWorkspace.id, id: latest?.id ?? 0 };
+    } else if (
+      latest &&
+      (latest.id !== newest.current.id || latest.head !== newest.current.head) &&
+      (now.view ?? "sections") === "sections"
+    ) {
+      const saved = guideScrolls.current.get(currentWorkspace.id);
+      if (saved) pendingGuideScroll.current = { workspaceId: currentWorkspace.id, position: saved };
+      void show({ viewId: latest.id, commit: undefined, at: undefined });
+    }
+    newest.current = { workspaceId: currentWorkspace.id, id: latest?.id ?? 0, head: latest?.head };
   }, [currentWorkspace?.id, views, pr.commits, pr.snapshot, pr.snapshotReady]);
   const canvasView = (viewId != null && views?.find((v) => v.id === viewId)) || null;
   // Without either, the diff: all of it, or one of its layers (glossary: scope), which add up to it: what's on GitHub,
@@ -283,24 +371,6 @@ export function App() {
     }))
     .otherwise(() => null);
   const range = shownRange && { base: shownRange.base, head: shownRange.head ?? undefined };
-  const viewRange: ViewRange | null =
-    shownRange?.what != null ? { ...shownRange, what: shownRange.what } : null;
-
-  // How much each layer has, for the range menu: commits on GitHub and not pushed, files not committed.
-  const allCommits = useQuery({
-    ...core("listCommits", currentWorkspace?.id ?? 0, pr.commits?.mergeBase ?? ""),
-    enabled: !!currentWorkspace && !!pr.commits,
-  }).data;
-  const unpushedCommits = useQuery({
-    ...core("listCommits", currentWorkspace?.id ?? 0, pr.commits?.head ?? ""),
-    enabled: !!currentWorkspace && !!pr.commits,
-  }).data;
-  const commitCount = (l: typeof allCommits) => (l?.status === "ok" ? l.commits.length : 0);
-  const layers = {
-    pushed: commitCount(allCommits) - commitCount(unpushedCommits),
-    unpushed: commitCount(unpushedCommits),
-    uncommitted: uncommitted?.status === "ok" ? (uncommitted.size?.files ?? 0) : 0,
-  };
 
   // The workspace's entries, as the canvas shows them (ADR 0015: current or outdated in the live diff, shown or not in
   // the range picked). An explanation or finding shows only with its view.
@@ -311,17 +381,26 @@ export function App() {
     enabled: !!currentWorkspace && !!base && !!mergeBase,
   });
   const allEntries = entriesQuery.data;
-  const entries = useMemo(
-    () => allEntries?.filter((e) => !e.viewId || e.viewId === canvasView?.id) ?? noEntries,
-    [allEntries, canvasView?.id],
-  );
+  const entries = useMemo(() => {
+    if (!allEntries) return noEntries;
+    const roots = new Set(
+      allEntries
+        .filter(
+          (entry) =>
+            !entry.parentId &&
+            (!entry.viewId || entry.viewId === canvasView?.id || (!canvasView && !!entry.path)),
+        )
+        .map((entry) => entry.id),
+    );
+    return allEntries.filter((entry) => roots.has(entry.parentId ?? entry.id));
+  }, [allEntries, canvasView?.id]);
   // Callbacks handed to the Viewers are stable (useCallback), so a memoised Viewer doesn't redraw its file diff.
   // Paths of the reviewed file diffs: the live diff's, reloaded with the changes, since a file diff that changed is no
   // longer reviewed (ADR 0014); or at a view's head, where they stay as they were.
   const reviewedBase = range?.base ?? mergeBase;
   const reviewedQuery = useQuery({
     ...core("listReviewed", currentWorkspace?.id ?? 0, reviewedBase ?? "", range?.head),
-    enabled: !!currentWorkspace && !!reviewedBase && !!pr.changed,
+    enabled: !!currentWorkspace && !!reviewedBase && (!!pr.changed || !!canvasView),
   });
   const reviewed = reviewedQuery.data ?? noPaths;
   const reviewedFilesQuery = useQuery({
@@ -338,6 +417,11 @@ export function App() {
   showReviewed.current = viewSettings.showReviewed;
   const inView = useRef(!!canvasView);
   inView.current = !!canvasView;
+  const [fileDisclosure, setFileDisclosure] = useState<Record<string, boolean>>({});
+  const disclosureKey = (path: string, kind?: "file") =>
+    `${currentWorkspace?.id}:${viewId ?? reviewedBase}:${range?.head ?? "live"}:${kind ?? "diff"}:${path}`;
+  const setFileCollapsed = (path: string, collapsed: boolean, kind?: "file") =>
+    setFileDisclosure((before) => ({ ...before, [disclosureKey(path, kind)]: collapsed }));
   const markReviewed = useCallback(
     (path: string, on: boolean, kind?: "file") => {
       if (!currentWorkspace || !reviewedBase) return;
@@ -345,6 +429,7 @@ export function App() {
       const diffs = [...(scroller?.querySelectorAll<HTMLElement>('[id^="diff:"]') ?? [])];
       const i = diffs.findIndex((el) => el.id === `diff:${path}`);
       const next = diffs[i + 1];
+      setFileCollapsed(path, on, kind);
       mark(currentWorkspace.id, reviewedBase, path, on, range?.head, kind);
       const anchor = inView.current ? diffs[i] : next;
       if (!on || showReviewed.current || i < 0 || !anchor || !scroller) return;
@@ -357,12 +442,14 @@ export function App() {
         offset: top - at,
       });
     },
-    [currentWorkspace?.id, reviewedBase, range?.head],
+    [currentWorkspace?.id, viewId, reviewedBase, range?.head],
   );
   // Marks all of a view section's files and file diffs, or unmarks them.
   const markSection = (files: Opened[], on: boolean) => {
     if (!currentWorkspace || !reviewedBase) return;
-    for (const d of files.filter((d) => isReviewed(d) !== on))
+    for (const d of files) {
+      setFileCollapsed(openedPath(d), on, d.kind === "file" ? "file" : undefined);
+      if (isReviewed(d) === on) continue;
       mark(
         currentWorkspace.id,
         reviewedBase,
@@ -371,6 +458,7 @@ export function App() {
         range?.head,
         d.kind === "file" ? "file" : undefined,
       );
+    }
   };
   // Questions' turns by thread, kept here so they outlive the Viewer showing them. The reply streams in as chat
   // entries; once the turn ends it's an answer entry. The streamed reply stays until the next turn, so the thread
@@ -457,7 +545,11 @@ export function App() {
   const reviewScroll = useRef<(() => void) | undefined>(undefined);
   useEffect(() => () => reviewScroll.current?.(), [location.state.__TSR_key]);
   const scrolls = useRef(new Map<string, Scroll>());
-  const workspaceScrolls = useRef(new Map<number, Scroll>());
+  const paneScrolls = useRef(new Map<string, Scroll>());
+  const lastPane = useRef<string | undefined>(undefined);
+  const restoredCanvas = useRef<HTMLElement | null>(null);
+  const guideScrolls = useRef(new Map<number, Scroll>());
+  const pendingGuideScroll = useRef<{ workspaceId: number; position: Scroll } | null>(null);
   const scrollWorkspace = useRef<number | undefined>(undefined);
   const entry = () => router.history.location.state.__TSR_key ?? "";
   // Memoised: the Viewer rereads when its Opened changes.
@@ -481,10 +573,14 @@ export function App() {
   );
   // Reviewed file diffs are hidden unless Show Reviewed Files is on, as in the Navigator. In a view they collapse to
   // their header instead, so the prose leading into them still has them under it.
-  const isShown = (d: Opened) => viewSettings.showReviewed || !isReviewed(d);
+  const isShown = (d: Opened) =>
+    viewSettings.showReviewed || s.at === openedPath(d) || !isReviewed(d);
+  const isCollapsed = (d: Opened) =>
+    fileDisclosure[disclosureKey(openedPath(d), d.kind === "file" ? "file" : undefined)] ??
+    (s.at !== openedPath(d) && isReviewed(d));
   const shownDiffs = useMemo(
     () => diffDiffs?.filter(isShown),
-    [diffDiffs, reviewed, viewSettings.showReviewed],
+    [diffDiffs, reviewed, viewSettings.showReviewed, s.at],
   );
   // With a view, its sections in order: prose and the file diffs it embeds; for a guide, then the files in none.
   const sections = useMemo(() => {
@@ -518,49 +614,112 @@ export function App() {
         ),
       );
     return all;
-  }, [canvasView, diffDiffs, reviewed, reviewedFiles, viewSettings.showReviewed]);
+  }, [canvasView, diffDiffs]);
   const canvasFiles = sections?.flatMap((s) => s.files) ?? diffDiffs ?? [];
-  // The table of contents: the section at the top of the canvas's scroll.
-  const [currentSection, setCurrentSection] = useState(0);
-  const pickSection = (i: number) => document.getElementById(`view-section-${i}`)?.scrollIntoView();
-  // The last section whose top has scrolled past the top of the canvas (with a little slack) is the current one. Only
-  // the canvas's own scroll: file diffs also scroll sideways inside it.
+  // Reading position is transient, separate from the router's click destination.
+  const [readingSection, setReadingSection] = useState<number | undefined>();
+  const [readingFile, setReadingFile] = useState<string | undefined>();
+  const [readingView, setReadingView] = useState<number | undefined>();
+  const guideReading = useRef(new Map<string, { section: number; file?: string }>());
+  const guideTracking = useRef<{ settling: boolean; timer?: ReturnType<typeof setTimeout> }>({
+    settling: true,
+  });
+  useLayoutEffect(() => {
+    // The virtualizer and scroll restoration can briefly report the old view's geometry.
+    // Restore the last reading marker before paint, then ignore intermediate layout corrections.
+    guideTracking.current.settling = true;
+    clearTimeout(guideTracking.current.timer);
+    const cached = guideReading.current.get(`${currentWorkspace?.id}:${canvasView?.id}`);
+    setReadingSection(cached?.section);
+    setReadingFile(cached?.file);
+    setReadingView(cached ? canvasView?.id : undefined);
+    return () => clearTimeout(guideTracking.current.timer);
+  }, [currentWorkspace?.id, canvasView?.id]);
+  const readGuide = (scroller: HTMLElement) => {
+    // Unmount/resize callbacks can arrive after PR overview has replaced the review canvas.
+    if (
+      s.pr ||
+      !scroller.isConnected ||
+      !canvas.current?.isConnected ||
+      !canvas.current.contains(scroller)
+    )
+      return;
+    const nodes = canvas.current?.querySelectorAll<HTMLElement>(".guide-section[id]");
+    if (!nodes?.length) {
+      setReadingSection(undefined);
+      setReadingFile(undefined);
+      return;
+    }
+    const styles = getComputedStyle(nodes[0]);
+    const viewport = scroller.getBoundingClientRect();
+    const top = viewport.top + (parseFloat(styles.scrollMarginTop) || 0) + 1;
+    let current = 0;
+    nodes.forEach((node, index) => {
+      if (node.getBoundingClientRect().top <= top) current = index;
+    });
+    setReadingSection(current);
+    const cards = [...nodes[current].querySelectorAll<HTMLElement>('[id^="diff:"]')];
+    let file: HTMLElement | undefined;
+    for (const card of cards) {
+      const bounds = card.getBoundingClientRect();
+      if (!file && bounds.top < viewport.bottom) file = card;
+      if (bounds.top <= top) file = card;
+    }
+    setReadingFile(file?.id.slice("diff:".length));
+    setReadingView(canvasView?.id);
+    if (currentWorkspace && canvasView) {
+      guideReading.current.set(`${currentWorkspace.id}:${canvasView.id}`, {
+        section: current,
+        file: file?.id.slice("diff:".length),
+      });
+    }
+  };
+  const followGuide = (scroller: HTMLElement) => {
+    if (s.pr || view !== "sections" || !canvasView || !scroller.isConnected) return;
+    if (!guideTracking.current.settling) return readGuide(scroller);
+    clearTimeout(guideTracking.current.timer);
+    guideTracking.current.timer = setTimeout(() => {
+      guideTracking.current.settling = false;
+      readGuide(scroller);
+    }, 120);
+  };
+  const paneKey = `${currentWorkspace?.id}:${s.pr ? "pr" : view}:${s.file ?? ""}:${s.fileAt ?? ""}`;
+  const scrollFrame = useRef<number | undefined>(undefined);
+  useLayoutEffect(
+    () => () => {
+      if (scrollFrame.current !== undefined) cancelAnimationFrame(scrollFrame.current);
+      scrollFrame.current = undefined;
+      clearTimeout(guideTracking.current.timer);
+    },
+    [paneKey, screen],
+  );
+  const rememberScroll = (position: Scroll) => {
+    paneScrolls.current.set(paneKey, position);
+    scrolls.current.set(entry(), position);
+    if (
+      !s.pr &&
+      currentWorkspace &&
+      view === "sections" &&
+      canvasView &&
+      !guideTracking.current.settling
+    )
+      guideScrolls.current.set(currentWorkspace.id, position);
+  };
+  // Save the cheap offset immediately, but measure anchors/read markers at most once per display frame.
   const onCanvasScroll = (e: UIEvent<HTMLDivElement>) => {
+    if (s.pr) return;
     const scroller = e.target as HTMLElement;
     if (scroller.parentElement !== e.currentTarget) return;
-    const position = scrollOf(scroller);
-    scrolls.current.set(entry(), position);
-    if (currentWorkspace) workspaceScrolls.current.set(currentWorkspace.id, position);
-    if (!sections) return;
-    const top = scroller.getBoundingClientRect().top + 40;
-    const passed = sections.flatMap((_, i) => {
-      const el = document.getElementById(`view-section-${i}`);
-      return el && el.getBoundingClientRect().top <= top ? [i] : [];
+    rememberScroll({ top: scroller.scrollTop, offset: 0 });
+    if (scrollFrame.current !== undefined) return;
+    scrollFrame.current = requestAnimationFrame(() => {
+      scrollFrame.current = undefined;
+      if (!scroller.isConnected) return;
+      followGuide(scroller);
+      rememberScroll(scrollOf(scroller));
     });
-    setCurrentSection(passed.at(-1) ?? 0);
   };
-  // A prompt for the agent pane's composer, from the new view menu; a new object each time, so the same one attaches
-  // again. The user sends it from the agent pane; the view shows as soon as the agent starts it.
-  const [composerPrompt, setComposerPrompt] = useState<{
-    prompt: AttachedPrompt;
-    workspaceId: number;
-  }>();
-  const prompts = useQuery(core("listPrompts")).data ?? [];
-  // Its explanations and findings go with it; showing it, the canvas falls back to the diff.
-  const removeView = async (v: View, label: string) => {
-    const ok = await window.coxswain.confirm({
-      message: `Remove the view “${label}”?`,
-      detail: "Its sections, explanations and findings are deleted.",
-      action: "Remove",
-    });
-    if (!ok) return;
-    await window.coxswain.removeView(v.id);
-  };
-  const newView = async () => {
-    const picked = await window.coxswain.showNewViewMenu(viewRange);
-    if (picked === "new-prompt") setScreen("new-prompt");
-    else setComposerPrompt({ prompt: picked, workspaceId: currentWorkspace!.id });
-  };
+  const [updatingGuide, setUpdatingGuide] = useState<number | null>(null);
   const showView = (id: number | null) =>
     void show({ viewId: id, commit: undefined, file: undefined, fileAt: undefined, at: undefined });
   const pickCommit = (picked: Commit | null) =>
@@ -573,7 +732,28 @@ export function App() {
     });
   // The pane's bar: Changes and Files are the Navigator's toggle (a history entry, ADR 0025).
   const pickPaneTab = (t: PaneTab) => {
-    if (t !== view) void show({ view: t === "files" ? "files" : undefined });
+    if (t === view) return;
+    match(t)
+      .with("sections", () => {
+        const saved = currentWorkspace && guideScrolls.current.get(currentWorkspace.id);
+        if (saved && currentWorkspace)
+          pendingGuideScroll.current = { workspaceId: currentWorkspace.id, position: saved };
+        void show({
+          view: "sections",
+          file: undefined,
+          at: undefined,
+          ...(canvasView ? {} : { viewId: views?.[0]?.id, commit: undefined, scope: undefined }),
+        });
+      })
+      .with("files", () => {
+        const tab = s.editorFile ?? fileTabsOf(s).at(-1);
+        void show(tab ? openEditorFile(s, tab) : { view: "files" });
+      })
+      .with(
+        "diffs",
+        () => void show({ view: "diffs", viewId: null, file: undefined, fileAt: undefined }),
+      )
+      .exhaustive();
   };
   const pickScope = (picked: "all" | "pushed" | "unpushed" | "uncommitted") =>
     void show({
@@ -615,19 +795,33 @@ export function App() {
       setPaneOpen(true);
       // The same file again without a line (e.g. the tree selecting the one it revealed) is no new entry.
       const now = shown.current;
-      if (!line && now.view === "files" && now.file === path) return;
-      void show({ view: "files", file: path, line, fileAt: commit, at: undefined });
+      if (!line && now.view === "files" && now.file === path && now.fileAt === commit) return;
+      void show(openEditorFile(now, { path, commit }, line));
     },
     [show],
   );
   // An entry of its own, though the canvas still shows the file diffs.
-  const open = async (path: string) => {
-    if (view === "files") return openFile(path);
-    await show({ at: path });
-    // ponytail: file diffs above it that are still loading push it down.
-    document.getElementById(`diff:${path}`)?.scrollIntoView();
+  const openReviewFile = async (path: string, pane: "sections" | "diffs") => {
+    setFileCollapsed(path, false);
+    // The first card shares its section's destination, including on narrow layouts
+    // where the explanation sits above the cards. Keep at to reveal reviewed files.
+    const section =
+      pane === "sections"
+        ? sections?.findIndex((item) =>
+            item.files[0] ? openedPath(item.files[0]) === path : false,
+          )
+        : undefined;
+    await show({
+      view: pane,
+      file: undefined,
+      fileAt: undefined,
+      ...(pane === "diffs" ? { viewId: null } : {}),
+      at: path,
+      section: section !== undefined && section >= 0 ? section : undefined,
+    });
   };
   const showFile = view === "files" && opened;
+  const editorTabs = fileTabsOf(s);
   // The command palette, with its first query while it's open: ">" for actions (⌘K), "" for files (Open Quickly, ⌘⇧O).
   // A file picked is shown on the canvas with the Navigator on Files.
   const [palette, setPalette] = useState<string | null>(null);
@@ -648,11 +842,21 @@ export function App() {
       root = all.find((e) => e.id === threadId);
     }
     if ((!root?.path && root?.section == null) || root.workspaceId !== shown.current.ws) return;
+    if (root.path) setFileCollapsed(root.path, false);
     setViewSettings((settings) => ({ ...settings, showReviewed: true }));
     // Already on the canvas (its file shows and its lines are there, e.g. a note written in the view shown): scroll to
     // it in place rather than leave for the range it was written in.
     const here = entries.find((e) => e.id === threadId);
-    if (root.section != null && !showFile && canvasView?.id === root.viewId)
+    if (view === "diffs" && root.path && canvasFiles.some((file) => openedPath(file) === root.path))
+      await show({
+        view: "diffs",
+        viewId: null,
+        thread: threadId,
+        at: root.path,
+        file: undefined,
+        fileAt: undefined,
+      });
+    else if (root.section != null && !showFile && canvasView?.id === root.viewId)
       await show({ thread: threadId });
     else if (here?.shown && !showFile && canvasFiles.some((f) => openedPath(f) === root.path))
       await show({ thread: threadId, at: root.path! });
@@ -660,31 +864,84 @@ export function App() {
     setThreadPicks((n) => n + 1);
   };
   const canvasReady =
-    viewId !== undefined &&
-    (viewId === null || !!views) &&
-    !!pr.commits &&
-    !!diffDiffs &&
-    !!shownDiffs &&
-    (entriesQuery.data !== undefined || entriesQuery.isError) &&
-    (reviewedQuery.data !== undefined || reviewedQuery.isError) &&
-    (!canvasView || reviewedFilesQuery.data !== undefined || reviewedFilesQuery.isError);
-  // Restore only the destination's scroll. Retries from an old navigation must never move a new canvas.
+    view === "files"
+      ? !!pr.commits
+      : viewId !== undefined &&
+        (viewId === null || !!views) &&
+        !!pr.commits &&
+        !!diffDiffs &&
+        !!shownDiffs &&
+        (entriesQuery.data !== undefined || entriesQuery.isError) &&
+        (reviewedQuery.data !== undefined || reviewedQuery.isError) &&
+        (!canvasView || reviewedFilesQuery.data !== undefined || reviewedFilesQuery.isError);
   useEffect(() => {
-    if (!canvasReady || !canvas.current || !currentWorkspace) return;
+    if (s.pr || !canvasReady || !canvas.current?.isConnected) return;
+    const scroller = canvasScroller(canvas.current);
+    if (!scroller) return;
+    const observer = new ResizeObserver(() => followGuide(scroller));
+    observer.observe(scroller);
+    followGuide(scroller);
+    return () => {
+      observer.disconnect();
+      clearTimeout(guideTracking.current.timer);
+    };
+  }, [canvasReady, currentWorkspace?.id, canvasView?.id, sections?.length, screen, paneKey]);
+  // Restore only the destination's scroll. Retries from an old navigation must never move a new canvas.
+  useLayoutEffect(() => {
+    if (s.pr || !canvasReady || !canvas.current?.isConnected || !currentWorkspace) return;
     const switched = scrollWorkspace.current !== currentWorkspace.id;
+    const remounted = restoredCanvas.current !== canvas.current;
+    restoredCanvas.current = canvas.current;
+    const paneChanged = lastPane.current !== paneKey;
+    lastPane.current = paneKey;
     scrollWorkspace.current = currentWorkspace.id;
+    const guideReturn = pendingGuideScroll.current;
+    if (view === "sections" && canvasView && guideReturn?.workspaceId === currentWorkspace.id) {
+      pendingGuideScroll.current = null;
+      return restoreScroll(canvas.current, guideReturn.position);
+    }
     const saved = moved
       ? scrolls.current.get(location.state.__TSR_key ?? "")
-      : switched
-        ? workspaceScrolls.current.get(currentWorkspace.id)
+      : paneChanged || remounted
+        ? paneScrolls.current.get(paneKey)
         : undefined;
-    if (s.thread) return; // thread navigation owns the scroll
+    if (!remounted && (s.thread || (s.section !== undefined && !moved))) return; // explicit navigation owns its scroll
     if (saved) return restoreScroll(canvas.current, saved);
-    if (switched) {
+    if (switched || paneChanged) {
       const scroller = canvasScroller(canvas.current);
       if (scroller) scroller.scrollTop = 0;
     }
-  }, [location.state.__TSR_key, currentWorkspace?.id, canvasReady]);
+  }, [
+    location.state.__TSR_key,
+    currentWorkspace?.id,
+    canvasReady,
+    canvasView?.id,
+    paneKey,
+    screen,
+  ]);
+  useEffect(() => {
+    if (s.section === undefined || !canvasReady || !canvas.current || !sections) return;
+    if (moved && scrolls.current.has(location.state.__TSR_key ?? "")) return;
+    const target = canvasElement(canvas.current, `view-section-${s.section}`);
+    if (!target) return;
+    return restoreScroll(canvas.current, {
+      top: 0,
+      anchor: target.id,
+      offset: -(parseFloat(getComputedStyle(target).scrollMarginTop) || 0),
+    });
+  }, [location.state.__TSR_key, s.section, canvasReady, sections?.length]);
+  useEffect(() => {
+    if (!s.at || s.thread || s.section !== undefined || !canvasReady || !canvas.current || showFile)
+      return;
+    if (moved && scrolls.current.has(location.state.__TSR_key ?? "")) return;
+    const target = canvasElement(canvas.current, `diff:${s.at}`);
+    if (!target) return;
+    return restoreScroll(canvas.current, {
+      top: 0,
+      anchor: target.id,
+      offset: -(parseFloat(getComputedStyle(target).scrollMarginTop) || 0),
+    });
+  }, [location.state.__TSR_key, s.at, canvasReady, !!showFile]);
   // What holds the thread: its file diff, or on a view's prose its section (ADR 0036).
   const threadSection = allEntries?.find((e) => e.id === s.thread)?.section;
   const threadIn = match({ at: s.at, section: threadSection })
@@ -695,26 +952,104 @@ export function App() {
     if (!s.thread || !threadIn || !canvasReady || !canvas.current) return;
     return scrollToThread(canvas.current, threadIn, s.thread);
   }, [location.state.__TSR_key, s.thread, threadIn, canvasReady, threadPicks]);
+  useEffect(() => {
+    if (import.meta.env.DEV)
+      performance.mark(
+        `cx:canvas:${currentWorkspace?.id}:${view}:${canvasReady ? "ready" : "loading"}`,
+      );
+  }, [currentWorkspace?.id, view, canvasReady]);
 
   // The action registry (ADR 0027): everything the command palette lists and the native menu runs, by id. Rebuilt each
   // render, so each action's enabled and run see the current state.
   const onMain = screen === "main" && !!current && palette === null;
   const ready = !!currentWorkspace && !!pr.commits;
-  const titles = viewTitles(views ?? []);
-  const newViewAction = (p: Prompt | null, id: string, title: string): Action => ({
-    id: `new-view:${id}`,
-    title,
-    enabled: ready,
-    run: async () =>
-      setComposerPrompt({
-        prompt: await window.coxswain.attachPrompt(p, viewRange),
-        workspaceId: currentWorkspace!.id,
-      }),
-  });
   useEffect(() => {
     closeFind(false);
   }, [currentWorkspace?.id, viewId, showFile, range?.base, range?.head, screen]);
+  const sidebarThreads = entries.filter((e) => (e.path || e.section != null) && !e.parentId);
+  const botAuthors = useMemo(
+    () =>
+      new Set(
+        (pr.details?.threads ?? []).flatMap((thread) =>
+          thread.comments.filter((comment) => comment.authorIsBot).map((comment) => comment.author),
+        ),
+      ),
+    [pr.details],
+  );
+  const guideAuthors = [...new Set(sidebarThreads.map(threadAuthor))]
+    .sort()
+    .map((name) => ({ name, isBot: botAuthors.has(name) || botLogin(name) }));
+  const reviewThreads = sidebarThreads.filter((e) => !e.resolvedAt && isComment(e));
+  const canSubmitReview =
+    !!currentWorkspace && (!!pr.details || reviewThreads.length > 0) && !sendingReview;
+  const submitReview = () => setSubmittingReview(true);
+  const showThreads = () => {
+    setPaneOpen(true);
+    pickPaneTab("sections");
+  };
+  const sendReview = async (threadIds: number[]) => {
+    if (!currentWorkspace) return;
+    setSendingReview(true);
+    setReviewNotice("Sending review to agent…");
+    setAgentsOpen(true);
+    try {
+      const result = await window.coxswain.sendReview(currentWorkspace.id, threadIds);
+      setReviewNotice(result.status === "error" ? result.message : null);
+      if (result.status === "error") showThreads();
+    } catch (error) {
+      setReviewNotice((error as Error).message);
+      showThreads();
+    } finally {
+      setSendingReview(false);
+    }
+  };
   const actions: Action[] = [
+    {
+      id: "submit-review",
+      title: "Submit Review",
+      enabled: onMain && canSubmitReview,
+      run: submitReview,
+    },
+    {
+      id: "show-threads",
+      title: "Show Threads",
+      enabled: onMain && !!currentWorkspace,
+      run: showThreads,
+    },
+
+    {
+      id: "close-workspace-tab",
+      title: "Close Workspace Tab",
+      shortcut: "⌘W",
+      enabled: onMain && !!currentWorkspace,
+      run: () => {
+        if (currentWorkspace) closeWorkspaceTab(currentWorkspace);
+      },
+    },
+    ...Array.from({ length: 9 }, (_, i): Action => {
+      const w = i === 8 ? openWorkspaces.at(-1) : openWorkspaces[i];
+      return {
+        id: `workspace-${i + 1}`,
+        title: i === 8 ? "Last Workspace" : `Workspace ${i + 1}`,
+        shortcut: `⌘${i + 1}`,
+        enabled: onMain && !!w,
+        run: () => {
+          if (w) void selectWorkspace(w.id);
+        },
+      };
+    }),
+    ...([-1, 1] as const).map((by): Action => ({
+      id: by === 1 ? "next-workspace" : "previous-workspace",
+      title: by === 1 ? "Next Workspace" : "Previous Workspace",
+      shortcut: by === 1 ? "⌃Tab" : "⌃⇧Tab",
+      enabled: onMain && openWorkspaces.length > 1,
+      run: () => {
+        const i = openWorkspaces.findIndex((w) => w.id === currentWorkspace?.id);
+        const w =
+          openWorkspaces[(Math.max(0, i) + by + openWorkspaces.length) % openWorkspaces.length];
+        if (w) void selectWorkspace(w.id);
+      },
+    })),
     {
       id: "show-pull-request",
       title: "Show Pull Request",
@@ -779,15 +1114,9 @@ export function App() {
     },
     {
       id: "toggle-agent-pane",
-      title: "Show or Hide the Agent Pane",
+      title: "Show or Hide the Right Sidebar",
       enabled: !!currentWorkspace,
       run: () => setAgentsOpen(!agentsOpen),
-    },
-    {
-      id: "toggle-sidebar",
-      title: "Show or Hide the Sidebar",
-      enabled: true,
-      run: () => setSidebarOpen((o) => !o),
     },
     {
       id: "toggle-commits",
@@ -803,16 +1132,17 @@ export function App() {
     },
     {
       id: "show-diff",
-      title: "Show the Diff Without a View",
+      title: "Show Changes",
       enabled: ready && !!canvasView,
       run: () => showView(null),
     },
-    ...(views ?? []).map((v) => ({
-      id: `show-view:${v.id}`,
-      title: `Show View: ${titles.get(v.id)}`,
-      enabled: ready && v.id !== canvasView?.id,
-      run: () => showView(v.id),
-    })),
+    { id: "show-guide", title: "Show Guide", enabled: ready, run: () => pickPaneTab("sections") },
+    {
+      id: "update-guide",
+      title: "Update Guide…",
+      enabled: ready,
+      run: () => setUpdatingGuide(currentWorkspace!.id),
+    },
     ...(
       [
         ["all", "Show All Changes"],
@@ -845,10 +1175,6 @@ export function App() {
       enabled: ready && currentWorkspace.prNumber === null && !!current?.github,
       run: () => void openPullRequest(currentWorkspace!),
     },
-    ...prompts.map((p) =>
-      newViewAction(p, p.id === null ? p.title : String(p.id), `New View (${p.title})`),
-    ),
-    newViewAction(null, "custom", "New View…"),
     {
       id: "diff-unified",
       title: "Unified Diffs",
@@ -914,19 +1240,17 @@ export function App() {
     onOpenFile: openFile,
     diffStyle: viewSettings.diffStyle,
     revealThread: s.thread,
+    revealVersion: threadPicks,
+    onThreadResolved: (id: number) => {
+      if (shown.current.thread === id) void show({ thread: undefined });
+    },
+    onCollapsedChange: setFileCollapsed,
   });
 
   if (!setup.data) return null; // local and quick, like the projects below
   if (setup.data.problems.length)
     return <Setup check={setup.data} onRetry={() => void setup.refetch()} />;
-  if (screen === "settings" || screen === "new-prompt")
-    return (
-      <Settings
-        onClose={close}
-        workspaceId={currentWorkspace?.id}
-        newPrompt={screen === "new-prompt"}
-      />
-    );
+  if (screen === "settings") return <Settings onClose={close} workspaceId={currentWorkspace?.id} />;
   // Projects and New workspace are dialogs over the screen below them.
   const dialog =
     screen === "projects" || screen === "projects-add-local" || screen === "projects-create" ? (
@@ -960,34 +1284,78 @@ export function App() {
           onChooseProject={() => setScreen("projects")}
         />
         {dialog}
+        {updatingGuide !== null && (
+          <UpdateGuideDialog workspaceId={updatingGuide} onClose={() => setUpdatingGuide(null)} />
+        )}
       </>
     );
 
-  // Empty shell of the main screen from docs/UX.md: L1 project and workspaces, the agent pane, the canvas.
+  const openSettings = async () => {
+    const result = await window.coxswain.showSettingsMenu(viewSettings);
+    match(result)
+      .with({ kind: "app" }, () => setScreen("settings"))
+      .with({ kind: "display" }, ({ settings }) => setViewSettings(settings))
+      .with({ kind: "dismissed" }, () => {})
+      .exhaustive();
+  };
+  // Workspace tabs above the primary canvas, with optional navigation and chat panes.
   return (
     // Side panes keep their dragged width but shrink with the window before the Viewer goes below viewerMin.
-    <div className="flex h-full select-none overflow-hidden text-sm">
+    <div className="workspace-shell relative flex h-full flex-col select-none overflow-hidden text-sm">
       {dialog}
-      {sidebarOpen && (
-        <WorkspaceRail
-          project={current}
-          cloning={cloning}
-          workspaces={workspaces}
-          current={currentWorkspace}
-          onProjects={async () => {
-            const picked = await window.coxswain.showProjectsMenu(
-              projects.map((p) => ({ id: p.id, label: projectLabel(p) })),
-            );
-            if (picked === null) setScreen("projects");
-            else if (picked !== current.id) await selectProject(picked);
+      {updatingGuide !== null && (
+        <UpdateGuideDialog workspaceId={updatingGuide} onClose={() => setUpdatingGuide(null)} />
+      )}
+      {submittingReview && currentWorkspace && (
+        <SubmitReviewDialog
+          key={currentWorkspace.id}
+          workspaceId={currentWorkspace.id}
+          pr={pr.details}
+          onViewThread={viewThread}
+          onSendToAgent={(ids) => void sendReview(ids)}
+          onCopied={() => {
+            setReviewNotice("Review prompt copied");
+            showThreads();
           }}
-          onSelect={(w) => void selectWorkspace(w.id)}
-          onRemove={removeWorkspace}
-          onNew={() => setScreen("new-workspace")}
-          onHide={() => setSidebarOpen(false)}
+          onClose={() => setSubmittingReview(false)}
         />
       )}
+      <WorkspaceTabs
+        project={current}
+        cloning={cloning}
+        workspaces={openWorkspaces}
+        current={currentWorkspace}
+        onProjects={async () => {
+          const picked = await window.coxswain.showProjectsMenu(
+            projects.map((p) => ({ id: p.id, label: projectLabel(p) })),
+          );
+          if (picked === null) setScreen("projects");
+          else if (picked !== current.id) await selectProject(picked);
+        }}
+        onSelect={(w) => void selectWorkspace(w.id)}
+        onRemove={removeWorkspace}
+        onClose={closeWorkspaceTab}
+        onNew={() => setScreen("new-workspace")}
+        agentsOpen={agentsOpen}
+        onToggleAgents={() => setAgentsOpen(!agentsOpen)}
+        onSettings={() => void openSettings()}
+        onActivity={() => setActivityOpen((open) => !open)}
+        activityOpen={activityOpen}
+        paneOpen={paneOpen}
+        onTogglePane={() => setPaneOpen((open) => !open)}
+        pullRequest={pr.details}
+        onShowPr={() => void show({ pr: true })}
+        prOpen={!!s.pr}
+      />
 
+      {activityOpen && (
+        <div className="absolute top-[calc(var(--ui-toolbar-height)+12px)] right-3 z-50">
+          <Activity
+            onClose={() => setActivityOpen(false)}
+            onSettings={() => setScreen("settings")}
+          />
+        </div>
+      )}
       {palette !== null && (
         <CommandPalette
           workspaceId={currentWorkspace?.id}
@@ -997,343 +1365,484 @@ export function App() {
           onClose={() => setPalette(null)}
         />
       )}
-      {currentWorkspace && agentsOpen && (
-        <>
-          {/* The agent pane, shown for a workspace unless hidden. */}
-          <div
-            onPointerDownCapture={() => activateFindPane("chat")}
-            onFocusCapture={() => activateFindPane("chat")}
-            style={{ width: agentsWidth }}
-            className={cn("flex min-w-60 flex-col border-r", divider)}
-          >
-            <Agents
-              key={currentWorkspace.id}
-              workspace={currentWorkspace}
-              onViewThread={viewThread}
-              composerPrompt={
-                composerPrompt?.workspaceId === currentWorkspace.id ? composerPrompt : undefined
-              }
-              onShowSidebar={sidebarOpen ? undefined : () => setSidebarOpen(true)}
-              onHide={() => setAgentsOpen(false)}
-            />
-          </div>
-          <Splitter min={240} max={800} onResize={setAgentsWidth} />
-        </>
-      )}
-
-      {/* The canvas: what the agent and the human look at together. For now, the workspace's file diffs. */}
-      <div
-        style={{ minWidth: viewerMin }}
-        className="flex min-w-0 flex-1 flex-col"
-        onPointerDownCapture={() => activateFindPane("canvas")}
-        onFocusCapture={() => activateFindPane("canvas")}
-      >
-        {!currentWorkspace ? (
-          <>
-            <div className={cn(titleBar, "border-b", divider)} />
-            <Centered>No workspace. Start one with +</Centered>
-          </>
-        ) : (
-          <div className="flex min-h-0 flex-1">
-            {paneOpen && (
-              <>
-                <div
-                  style={{ width: leftWidth }}
-                  className={cn("flex min-w-60 flex-col border-r", divider)}
-                >
-                  <PaneBar
-                    tab={view}
-                    files={diffPr.changed?.length}
-                    onTab={pickPaneTab}
-                    onHide={() => setPaneOpen(false)}
-                    showAgents={showAgents}
-                  />
-                  <div className="flex min-h-0 flex-1 flex-col">
-                    <Navigator
-                      key={currentWorkspace.id}
-                      workspace={currentWorkspace}
-                      pr={diffPr}
-                      view={view}
-                      layout={viewSettings.layout}
-                      reviewed={reviewed}
-                      showReviewed={viewSettings.showReviewed}
-                      entries={entries}
-                      local={range ? undefined : (pr.local ?? undefined)}
-                      selected={opened?.kind === "file" ? opened.path : undefined}
-                      onOpen={open}
-                    />
-                  </div>
-                  <HistoryBar
-                    tab={history}
-                    open={historyOpen && !!pr.commits}
-                    ready={!!pr.commits}
-                    onTab={showHistory}
-                    onToggle={() => setHistoryOpen((o) => !o)}
-                  />
-                  {/* ponytail: an even split; a drag handle between the halves if a fixed half gets in the way. */}
-                  {historyOpen &&
-                    pr.commits &&
-                    (history === "turns" ? (
-                      <Turns
-                        workspaceId={currentWorkspace.id}
-                        current={commit}
-                        onPick={pickCommit}
-                      />
-                    ) : (
-                      <Commits
-                        workspaceId={currentWorkspace.id}
-                        mergeBase={pr.commits.mergeBase}
-                        head={pr.commits.head}
-                        canOpenPr={currentWorkspace.prNumber === null && !!current.github}
-                        remote={pr.remote}
-                        problem={gitProblem}
-                        current={commit}
-                        onPick={pickCommit}
-                        uncommitted={uncommitted?.status === "ok" ? uncommitted.size : null}
-                        uncommittedOn={!commit && !canvasView && scope === "uncommitted"}
-                        onPickUncommitted={() => pickScope("uncommitted")}
-                        onPush={() => void push(currentWorkspace)}
-                        onOpenPullRequest={() => void openPullRequest(currentWorkspace)}
-                        checks={pr.details?.commitChecks ?? {}}
-                      />
-                    ))}
-                </div>
-                <Splitter min={240} max={720} onResize={setLeftWidth} />
-              </>
-            )}
-            <div className="flex min-w-0 flex-1 flex-col">
-              <CanvasBar
-                workspaceId={currentWorkspace.id}
-                paneOpen={paneOpen}
-                onShowPane={() => setPaneOpen(true)}
-                showAgents={paneOpen ? undefined : showAgents}
-                ready={!!pr.commits}
-                commit={commit}
-                view={canvasView}
-                views={views ?? []}
-                snapshot={pr.snapshot}
-                scope={scope}
-                hasPr={currentWorkspace.prNumber !== null}
-                onGitHub={!!current.github}
-                pr={pr.details}
-                onPr={!!s.pr}
-                onShowPr={() => void show({ pr: true })}
-                onRangeMenu={async () => {
-                  const picked = await window.coxswain.showRangeMenu(
-                    commit ? null : scope,
-                    currentWorkspace.prNumber !== null,
-                    layers,
-                  );
-                  if (picked === "commits" || picked === "turns") showHistory(picked);
-                  else pickScope(picked);
-                }}
-                onClearCommit={() => pickCommit(null)}
-                onShowView={showView}
-                onRemoveView={removeView}
-                onNewView={newView}
-                onOpenQuickly={() => run("open-quickly")}
-                canBack={canBack}
-                canForward={canForward}
-                onBack={() => run("back")}
-                onForward={() => run("forward")}
-                onSettings={() => setScreen("settings")}
-                onViewOptions={async () =>
-                  setViewSettings(await window.coxswain.showViewMenu(viewSettings))
-                }
-              />
-              <FindBar pane="canvas" />
-              {s.pr ? (
-                pr.details ? (
-                  <PullRequestPanel
-                    key={currentWorkspace.id}
-                    workspaceId={currentWorkspace.id}
-                    pr={pr.details}
-                  />
-                ) : (
-                  <Centered>Loading the pull request…</Centered>
-                )
-              ) : (
-                <div className="flex min-h-0 flex-1">
-                  {sections && !showFile && (
-                    <ViewToc
-                      sections={sections}
-                      reviewed={reviewed}
-                      reviewedFiles={reviewedFiles}
-                      entries={entries}
-                      current={currentSection}
-                      writing={!!canvasView?.writing}
-                      onPick={pickSection}
-                      onReviewedChange={(i, on) => markSection(sections[i].files, on)}
-                      onViewThread={(id) => void viewThread(id)}
-                    />
-                  )}
+      <div className="flex min-h-0 flex-1">
+        {/* The canvas: what the agent and the human look at together. For now, the workspace's file diffs. */}
+        <div
+          style={{ minWidth: viewerMin }}
+          className="relative flex min-w-0 flex-1 flex-col"
+          onPointerDownCapture={() => activateFindPane("canvas")}
+          onFocusCapture={() => activateFindPane("canvas")}
+        >
+          {!currentWorkspace ? (
+            <>
+              <div className={cn(titleBar, "border-b", divider)} />
+              <Centered>No open tabs. Reopen a workspace with ⌘K, or start one with +</Centered>
+            </>
+          ) : (
+            <div className="flex min-h-0 flex-1">
+              {
+                <>
                   <div
-                    style={{ minWidth: viewerMin }}
-                    className="flex min-w-0 flex-1 flex-col"
-                    ref={canvas}
-                    onScrollCapture={onCanvasScroll}
+                    style={{ width: leftWidth, display: paneOpen ? undefined : "none" }}
+                    className={cn(
+                      "workspace-sidebar flex min-w-60 flex-col border-r pt-[var(--ui-toolbar-height)]",
+                      divider,
+                    )}
                   >
-                    {!canvasReady ? (
-                      <Centered>
-                        {pr.commits || pr.problem ? "Loading…" : "Preparing the workspace…"}
-                      </Centered>
-                    ) : (
-                      <>
-                        {showFile && (
-                          // One Viewer per file: a reused one would scroll to a line in the file it drew before.
-                          <Viewer
-                            key={`${currentWorkspace.id}:${openedPath(opened)}:${s.fileAt ?? "live"}`}
-                            opened={opened}
-                            reviewed={false}
-                            {...viewerProps(currentWorkspace, pr.commits!.mergeBase, s.fileAt)}
-                          />
+                    <PaneBar
+                      tab={view}
+                      files={diffPr.changed?.length}
+                      onTab={pickPaneTab}
+                      onHide={() => setPaneOpen(false)}
+                      onOptions={() =>
+                        match(view)
+                          .with("sections", async () => {
+                            const picked = await window.coxswain.showGuideMenu(
+                              guideOptions,
+                              guideAuthors,
+                            );
+                            if (picked === "update") setUpdatingGuide(currentWorkspace.id);
+                            else if (picked !== null) setGuideOptions(picked);
+                          })
+                          .with("diffs", async () => {
+                            const picked = await window.coxswain.showChangesMenu(
+                              guideOptions,
+                              guideAuthors,
+                              viewSettings.layout,
+                              groupChanges,
+                            );
+                            match(picked)
+                              .with({ kind: "grouping" }, ({ enabled }) => setGroupChanges(enabled))
+                              .with({ kind: "filters" }, ({ options }) => {
+                                setGuideOptions(options);
+                                setViewSettings((settings) => ({
+                                  ...settings,
+                                  showReviewed: options.showReviewedFiles,
+                                }));
+                              })
+                              .with({ kind: "layout" }, ({ layout }) =>
+                                setViewSettings((settings) => ({ ...settings, layout })),
+                              )
+                              .with(null, () => {})
+                              .exhaustive();
+                          })
+                          .with("files", async () => {
+                            const settings = await window.coxswain.showFilesMenu(viewSettings);
+                            if (settings) setViewSettings(settings);
+                          })
+                          .exhaustive()
+                      }
+                    />
+                    <div className="flex min-h-0 flex-1 flex-col">
+                      <div
+                        className={cn(
+                          "flex flex-1 flex-col",
+                          view === "diffs" && historyOpen && pr.commits ? "min-h-24" : "min-h-0",
                         )}
-                        {canvasView?.writing && !showFile && <WritingViewNotice />}
-                        {canvasView?.worktree &&
-                          pr.snapshot &&
-                          canvasView.head !== pr.snapshot &&
-                          !showFile && (
-                            <StaleViewNotice
-                              onUpdate={async () =>
-                                setComposerPrompt({
-                                  prompt: await window.coxswain.updateViewPrompt(canvasView),
-                                  workspaceId: currentWorkspace.id,
-                                })
+                      >
+                        {view === "sections" ? (
+                          <>
+                            <GuideProgress
+                              workspaceId={currentWorkspace.id}
+                              hasGuide={!!views?.some((item) => item.guide)}
+                            />
+                            <Sections
+                              follow={!s.pr}
+                              sections={sections}
+                              current={readingView === canvasView?.id ? readingSection : undefined}
+                              currentFile={readingView === canvasView?.id ? readingFile : undefined}
+                              viewId={canvasView?.id}
+                              entries={entries}
+                              turns={turns}
+                              options={guideOptions}
+                              authors={guideAuthors}
+                              changed={diffPr.changed ?? []}
+                              isReviewed={isReviewed}
+                              onOpenFile={(path) => openReviewFile(path, "sections")}
+                              onFileReviewedChange={(file, on) =>
+                                markReviewed(
+                                  openedPath(file),
+                                  on,
+                                  file.kind === "file" ? "file" : undefined,
+                                )
+                              }
+                              onViewThread={viewThread}
+                              notice={reviewNotice}
+                              onPick={(section) => void show({ section, file: undefined })}
+                              onReviewedChange={(index, on) =>
+                                markSection(sections?.[index]?.files ?? [], on)
                               }
                             />
-                          )}
-                        {/* Only the lines on screen are drawn. Hidden, not unmounted, under a whole file: it keeps its
-                      scroll and read files for Back. ponytail: every file is still read from disk up front. */}
-                        <Virtualizer
-                          key={`${currentWorkspace.id}:${viewId ?? "diff"}:${range?.base ?? pr.commits?.mergeBase}:${range?.head ?? "live"}`}
-                          className={cn("min-h-0 flex-1 overflow-auto", showFile && "hidden")}
+                          </>
+                        ) : null}
+                        <RetainedNavigator
+                          key={currentWorkspace.id}
+                          workspace={currentWorkspace}
+                          pr={diffPr}
+                          livePr={pr}
+                          options={guideOptions}
+                          authors={guideAuthors}
+                          turns={turns}
+                          onViewThread={viewThread}
+                          view={view}
+                          layout={viewSettings.layout}
+                          groupChanges={groupChanges}
+                          reviewed={reviewed}
+                          showReviewed={viewSettings.showReviewed}
+                          onShowReviewed={(showReviewed) => {
+                            setViewSettings((settings) => ({ ...settings, showReviewed }));
+                            setGuideOptions((options) => ({
+                              ...options,
+                              showReviewedFiles: showReviewed,
+                            }));
+                          }}
+                          entries={entries}
+                          local={range ? undefined : (pr.local ?? undefined)}
+                          selected={
+                            view === "diffs"
+                              ? s.at
+                              : opened?.kind === "file"
+                                ? opened.path
+                                : undefined
+                          }
+                          onOpen={(path) => openReviewFile(path, "diffs")}
+                          onOpenFile={openFile}
+                          onReviewedChange={markReviewed}
+                        />
+                      </div>
+                      {view === "diffs" && historyOpen && pr.commits && (
+                        <Splitter
+                          axis="y"
+                          fromEnd
+                          min={96}
+                          max={1200}
+                          remainingMin={96}
+                          label="Resize Commits and Turns"
+                          onResize={setHistoryHeight}
+                        />
+                      )}
+                      {view === "diffs" && (
+                        <div
+                          style={
+                            historyOpen && pr.commits
+                              ? { height: historyHeight ?? "50%", maxHeight: "calc(100% - 96px)" }
+                              : undefined
+                          }
+                          className="flex shrink-0 flex-col min-h-0"
                         >
-                          {canvasView &&
-                          !canvasView.sections.length &&
-                          (!canvasView.guide || !diffDiffs.length) ? (
-                            <div className={cn("p-4 text-xs", muted)}>
-                              Nothing in this view yet.
-                            </div>
-                          ) : (
-                            !canvasView &&
-                            canvasFiles.every((file) => !isShown(file)) && (
-                              <div className={cn("p-4 text-xs", muted)}>
-                                {canvasFiles.length ? (
-                                  <>
-                                    All {canvasFiles.length} files reviewed.{" "}
-                                    <Button
-                                      variant="link"
-                                      onClick={() =>
-                                        setViewSettings((s) => ({ ...s, showReviewed: true }))
-                                      }
-                                    >
-                                      Show them
-                                    </Button>
-                                  </>
-                                ) : (
-                                  "No changes"
-                                )}
-                              </div>
-                            )
-                          )}
-                          {(
-                            sections ?? [
-                              {
-                                title: undefined,
-                                muted: false,
-                                files: diffDiffs,
-                                parts: shownDiffs.map((d) => ({ kind: "code", d, muted: false })),
-                              },
-                            ]
-                          ).map((x, i) => (
-                            <section
-                              key={i}
-                              id={`view-section-${i}`}
-                              className={cn(
-                                x.muted && "opacity-60",
-                                // A view's sections: a line between them, room at the end.
-                                x.title !== undefined && "border-t pb-4 first:border-t-0",
-                                divider,
-                              )}
-                            >
-                              {x.title !== undefined && (
-                                <ViewSectionHeader
-                                  title={x.title}
-                                  files={x.files.length}
-                                  reviewed={x.files.filter(isReviewed).length}
-                                  writing={!!canvasView?.writing}
-                                  onReviewedChange={(on) => markSection(x.files, on)}
-                                />
-                              )}
-                              <ProseThreads
+                          <HistoryBar
+                            tab={history}
+                            open={historyOpen && !!pr.commits}
+                            ready={!!pr.commits}
+                            onTab={showHistory}
+                            onToggle={() => setHistoryOpen((o) => !o)}
+                          />
+                          {historyOpen &&
+                            pr.commits &&
+                            (history === "turns" ? (
+                              <Turns
                                 workspaceId={currentWorkspace.id}
-                                canPost={currentWorkspace.prNumber !== null}
-                                viewId={canvasView?.id ?? 0}
-                                section={i}
-                                entries={entries}
-                                turns={turns}
-                                onAsk={ask}
-                                onAnswerPermission={answerPermission}
-                              >
-                                {(x.parts as SectionPart[]).map((p, j) =>
-                                  p.kind === "prose" ? (
-                                    <ViewProse
-                                      key={j}
-                                      part={j}
-                                      after={(x.parts as SectionPart[])[j - 1]?.kind === "code"}
-                                    >
-                                      {p.text}
-                                    </ViewProse>
-                                  ) : (
+                                current={commit}
+                                onPick={pickCommit}
+                              />
+                            ) : (
+                              <Commits
+                                workspaceId={currentWorkspace.id}
+                                mergeBase={pr.commits.mergeBase}
+                                head={pr.commits.head}
+                                canOpenPr={currentWorkspace.prNumber === null && !!current.github}
+                                remote={pr.remote}
+                                problem={gitProblem}
+                                current={commit}
+                                onPick={pickCommit}
+                                uncommitted={uncommitted?.status === "ok" ? uncommitted.size : null}
+                                uncommittedOn={!commit && !canvasView && scope === "uncommitted"}
+                                onPickUncommitted={() => pickScope("uncommitted")}
+                                onPush={() => void push(currentWorkspace)}
+                                onOpenPullRequest={() => void openPullRequest(currentWorkspace)}
+                                checks={pr.details?.commitChecks ?? {}}
+                              />
+                            ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  {paneOpen && (
+                    <Splitter
+                      min={240}
+                      max={720}
+                      onResize={setLeftWidth}
+                      label="Resize file sidebar"
+                    />
+                  )}
+                </>
+              }
+              <div className="relative flex min-w-0 flex-1 flex-col">
+                <div
+                  className={cn(
+                    "absolute right-4 left-4 z-40",
+                    view === "files"
+                      ? "top-[calc(var(--ui-toolbar-height)+48px)]"
+                      : "top-[calc(var(--ui-toolbar-height)+8px)]",
+                  )}
+                >
+                  <FindBar pane="canvas" />
+                </div>
+                {s.pr ? (
+                  pr.details ? (
+                    <PullRequestPanel
+                      key={currentWorkspace.id}
+                      workspaceId={currentWorkspace.id}
+                      pr={pr.details}
+                    />
+                  ) : (
+                    <Centered>Loading the pull request…</Centered>
+                  )
+                ) : (
+                  <RetainedCanvas
+                    key={currentWorkspace.id}
+                    surface={match(view)
+                      .with("files", () => "files" as const)
+                      .with("sections", () =>
+                        canvasView ? ("guide" as const) : ("changes" as const),
+                      )
+                      .with("diffs", () => "changes" as const)
+                      .exhaustive()}
+                    ready={canvasReady}
+                    canvasRef={canvas}
+                  >
+                    <div
+                      style={{ minWidth: viewerMin }}
+                      className="review-canvas flex min-w-0 flex-1 flex-col bg-neutral-50 dark:bg-neutral-950"
+                      onScrollCapture={onCanvasScroll}
+                    >
+                      {view === "files" && (
+                        <div className="shrink-0 pt-[var(--ui-toolbar-height)]">
+                          <FileTabs
+                            tabs={editorTabs}
+                            active={s.file ? { path: s.file, commit: s.fileAt } : undefined}
+                            onSelect={(tab) => openFile(tab.path, undefined, tab.commit)}
+                            onClose={(tab) => void show(closeEditorFile(s, tab))}
+                          />
+                        </div>
+                      )}
+                      {!canvasReady ? (
+                        <Centered>
+                          {pr.commits || pr.problem ? "Loading…" : "Preparing the workspace…"}
+                        </Centered>
+                      ) : (
+                        <>
+                          {showFile && (
+                            // One Viewer per file: a reused one would scroll to a line in the file it drew before.
+                            <Viewer
+                              editor
+                              key={`${currentWorkspace.id}:${openedPath(opened)}:${s.fileAt ?? "live"}`}
+                              opened={opened}
+                              reviewed={false}
+                              {...viewerProps(currentWorkspace, pr.commits!.mergeBase, s.fileAt)}
+                            />
+                          )}
+                          {view === "files" && !showFile && (
+                            <Centered>Open a file from the sidebar or with ⇧⌘O</Centered>
+                          )}
+                          {view !== "files" && canvasView?.writing && !showFile && (
+                            <WritingViewNotice />
+                          )}
+                          {canvasView?.worktree &&
+                            view !== "files" &&
+                            pr.snapshot &&
+                            canvasView.head !== pr.snapshot &&
+                            !showFile && (
+                              <StaleViewNotice
+                                onUpdate={() => setUpdatingGuide(currentWorkspace.id)}
+                              />
+                            )}
+                          {/* Pierre draws visible review lines; RetainedCanvas keeps each pane's geometry on tab switches. */}
+                          {view !== "files" && diffDiffs && shownDiffs && (
+                            <Virtualizer
+                              key={`${currentWorkspace.id}:${viewId ?? "diff"}:${range?.base ?? pr.commits?.mergeBase}:${range?.head ?? "live"}`}
+                              className={cn(
+                                "min-h-0 flex-1 overflow-auto [scroll-padding-top:var(--review-content-start)] [scroll-padding-bottom:var(--review-content-start)]",
+                              )}
+                              // Keep spacing off the scrollport: its padding also offsets sticky file headers.
+                              contentClassName="pt-[var(--review-content-start)] pb-[var(--review-content-end)]"
+                            >
+                              {canvasView &&
+                              !canvasView.sections.length &&
+                              (!canvasView.guide || !diffDiffs.length) ? (
+                                <div className={cn("p-4 text-xs", muted)}>
+                                  Nothing in this view yet.
+                                </div>
+                              ) : (
+                                !canvasView &&
+                                canvasFiles.every((file) => !isShown(file)) && (
+                                  <div className={cn("p-4 text-xs", muted)}>
+                                    {canvasFiles.length ? (
+                                      <>
+                                        All {canvasFiles.length} files reviewed.{" "}
+                                        <Button
+                                          variant="link"
+                                          onClick={() =>
+                                            setViewSettings((s) => ({ ...s, showReviewed: true }))
+                                          }
+                                        >
+                                          Show them
+                                        </Button>
+                                      </>
+                                    ) : (
+                                      "No changes"
+                                    )}
+                                  </div>
+                                )
+                              )}
+                              {(
+                                sections ?? [
+                                  {
+                                    title: undefined,
+                                    muted: false,
+                                    files: diffDiffs,
+                                    parts: shownDiffs.map((d) => ({
+                                      kind: "code",
+                                      d,
+                                      muted: false,
+                                    })),
+                                  },
+                                ]
+                              ).map((x, i) => (
+                                <section
+                                  key={i}
+                                  id={`view-section-${i}`}
+                                  className={cn(
+                                    x.muted && "opacity-60",
+                                    // A guide's explanation and cards share a row, with room between sections.
+                                    x.title !== undefined && "guide-section mb-12",
+                                    divider,
+                                  )}
+                                >
+                                  <ProseThreads
+                                    revealThread={s.thread}
+                                    revealVersion={threadPicks}
+                                    onThreadResolved={(id) => {
+                                      if (shown.current.thread === id)
+                                        void show({ thread: undefined });
+                                    }}
+                                    workspaceId={currentWorkspace.id}
+                                    canPost={currentWorkspace.prNumber !== null}
+                                    viewId={canvasView?.id ?? 0}
+                                    section={i}
+                                    entries={entries}
+                                    turns={turns}
+                                    onAsk={ask}
+                                    onAnswerPermission={answerPermission}
+                                  >
                                     <div
-                                      key={openedPath(p.d)}
-                                      id={`diff:${openedPath(p.d)}`}
                                       className={cn(
-                                        p.muted && !x.muted && "opacity-60",
-                                        x.title !== undefined && viewDiff,
+                                        x.title !== undefined && "guide-section-layout",
+                                        x.title !== undefined &&
+                                          x.files.length > 0 &&
+                                          "guide-section-with-code",
+                                        x.title !== undefined &&
+                                          x.files.length === 0 &&
+                                          "guide-section-prose-only",
                                       )}
                                     >
-                                      <Viewer
-                                        stacked
-                                        opened={p.d}
-                                        reviewed={isReviewed(p.d)}
-                                        collapsed={!isShown(p.d)}
-                                        {...viewerProps(
-                                          currentWorkspace,
-                                          range?.base ?? pr.commits!.mergeBase,
-                                          range?.head,
+                                      {x.title !== undefined && (
+                                        <GuideExplanation>
+                                          <ViewSectionHeader
+                                            title={x.title}
+                                            position={
+                                              x.title !== null && canvasView
+                                                ? {
+                                                    index: i + 1,
+                                                    total: canvasView.sections.length,
+                                                  }
+                                                : undefined
+                                            }
+                                            files={x.files.length}
+                                            reviewed={x.files.filter(isReviewed).length}
+                                            writing={!!canvasView?.writing}
+                                            onReviewedChange={(on) => markSection(x.files, on)}
+                                          />
+                                          {(x.parts as SectionPart[]).map(
+                                            (p, j) =>
+                                              p.kind === "prose" && (
+                                                <ViewProse key={j} part={j}>
+                                                  {p.text}
+                                                </ViewProse>
+                                              ),
+                                          )}
+                                        </GuideExplanation>
+                                      )}
+                                      <div className="min-w-0">
+                                        {(x.parts as SectionPart[]).map(
+                                          (p) =>
+                                            p.kind === "code" && (
+                                              <div
+                                                key={openedPath(p.d)}
+                                                id={`diff:${openedPath(p.d)}`}
+                                                className={cn(
+                                                  p.muted && !x.muted && "opacity-60",
+                                                  reviewCard,
+                                                  x.title === undefined && reviewGutter,
+                                                  "mb-8 overflow-clip",
+                                                )}
+                                              >
+                                                <Viewer
+                                                  stacked
+                                                  opened={p.d}
+                                                  reviewed={isReviewed(p.d)}
+                                                  collapsed={isCollapsed(p.d)}
+                                                  {...viewerProps(
+                                                    currentWorkspace,
+                                                    range?.base ?? pr.commits!.mergeBase,
+                                                    range?.head,
+                                                  )}
+                                                />
+                                              </div>
+                                            ),
                                         )}
-                                      />
+                                      </div>
                                     </div>
-                                  ),
-                                )}
-                              </ProseThreads>
-                            </section>
-                          ))}
-                        </Virtualizer>
-                      </>
-                    )}
-                  </div>
-                </div>
-              )}
+                                  </ProseThreads>
+                                </section>
+                              ))}
+                            </Virtualizer>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </RetainedCanvas>
+                )}
+                <FloatingReviewButton
+                  disabled={!canSubmitReview}
+                  count={reviewThreads.length}
+                  onPress={submitReview}
+                />
+              </div>
             </div>
-          </div>
-        )}
-        {currentWorkspace && diffPr.changed && (
-          <StatusBar
-            workspaceId={currentWorkspace.id}
-            entries={entries}
-            files={
-              sections
-                ? canvasFiles.map((d) => (d.kind === "diff" ? d.file : { path: d.path }))
-                : diffPr.changed
-            }
-            reviewed={sections ? canvasFiles.filter(isReviewed).map(openedPath) : reviewed}
-            turns={turns}
-            onViewThread={viewThread}
-            viewTitle={canvasView?.title}
-            pr={pr.details}
-          />
+          )}
+        </div>
+        {currentWorkspace && agentsOpen && (
+          <>
+            <Splitter fromEnd min={240} max={800} onResize={setAgentsWidth} />
+            <div
+              onPointerDownCapture={() => activateFindPane("chat")}
+              onFocusCapture={() => activateFindPane("chat")}
+              style={{ width: agentsWidth }}
+              className={cn(
+                "flex min-w-60 flex-col border-l pt-[var(--ui-toolbar-height)]",
+                divider,
+              )}
+            >
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                <Agents
+                  key={currentWorkspace.id}
+                  workspace={currentWorkspace}
+                  onViewThread={viewThread}
+                />
+              </div>
+            </div>
+          </>
         )}
       </div>
     </div>
@@ -1343,48 +1852,15 @@ export function App() {
 // A part of a view section on the canvas: its markdown, or a source file or file diff it embeds.
 type SectionPart = { kind: "prose"; text: string } | { kind: "code"; d: Opened; muted: boolean };
 
-const canvasScroller = (canvas: HTMLElement) =>
-  canvas.querySelector<HTMLElement>(":scope > .overflow-auto:not(.hidden)");
-
 // Where the canvas is scrolled: its offset, and the file diff at its top with how far it is scrolled past.
-type Scroll = { top: number; anchor?: string; offset: number };
 function scrollOf(scroller: HTMLElement): Scroll {
   const box = scroller.getBoundingClientRect();
   const el = document
     .elementFromPoint(box.left + box.width / 2, box.top + 1)
     ?.closest<HTMLElement>('[id^="diff:"]');
-  return el
+  return el && scroller.contains(el)
     ? { top: scroller.scrollTop, anchor: el.id, offset: box.top - el.getBoundingClientRect().top }
     : { top: scroller.scrollTop, offset: 0 };
-}
-
-// Scrolls the canvas back once what it shows has drawn: the file diff at the top is there, or the file is long enough.
-// Then again until it holds: after a jump, the file diffs' Virtualizer applies the fix-up it worked out for the old
-// place (keeping that file diff steady while those around it are drawn). ponytail: gives up after 2 s, e.g. a huge
-// file still loading, and leaves it as far as it got.
-function restoreScroll(canvas: HTMLElement, s: Scroll) {
-  let tries = 40;
-  let timer: ReturnType<typeof setTimeout>;
-  const later = () => {
-    timer = setTimeout(go, 50);
-  };
-  const go = () => {
-    const scroller = canvasScroller(canvas);
-    const el = s.anchor ? document.getElementById(s.anchor) : null;
-    const ready = s.anchor
-      ? el
-      : scroller && scroller.scrollHeight - scroller.clientHeight >= s.top;
-    if (!ready && tries-- > 0) return void later();
-    if (!scroller) return;
-    const by = el
-      ? el.getBoundingClientRect().top - scroller.getBoundingClientRect().top + s.offset
-      : s.top - scroller.scrollTop;
-    if (Math.abs(by) < 2) return;
-    scroller.scrollTop += by;
-    if (tries-- > 0) later();
-  };
-  timer = setTimeout(go);
-  return () => clearTimeout(timer);
 }
 
 // Stale (ADR 0023, 0028): the worktree moved on since the view was made, by new commits or local changes. The view
@@ -1393,11 +1869,9 @@ function restoreScroll(canvas: HTMLElement, s: Scroll) {
 function StaleViewNotice({ onUpdate }: { onUpdate: () => void }) {
   return (
     <div className="flex items-center gap-3 border-b border-amber-200 bg-amber-50 px-4 py-1 text-xs dark:border-amber-900 dark:bg-amber-950">
-      <span className="flex-1">
-        The code has changed since this view. It still shows the changes as they were.
-      </span>
+      <span className="flex-1">The Guide is updating to match the latest changes.</span>
       <Button className="py-0.5" onClick={onUpdate}>
-        Update View
+        Update Guide…
       </Button>
     </div>
   );
@@ -1415,7 +1889,7 @@ function WritingViewNotice() {
       )}
     >
       <SpinnerIcon />
-      The agent is still writing this view. Read on; more may come.
+      The agent is updating the Guide. Read on; more may come.
     </div>
   );
 }
@@ -1437,19 +1911,29 @@ function scrollToThread(canvas: HTMLElement, containerId: string, threadId: numb
   const go = () => {
     timer = setTimeout(go, 50);
     const scroller = canvasScroller(canvas);
-    const file = document.getElementById(containerId);
+    const file = canvasElement(canvas, containerId);
     if (!scroller || !file || !canvas.contains(file)) return;
     if (steps-- <= 0) return stop();
     const view = scroller.getBoundingClientRect();
     // The library keeps a thread's element while its lines aren't drawn, but without a box.
-    const thread = document.getElementById(`thread:${threadId}`);
+    const thread = canvasElement(canvas, `thread:${threadId}`);
     if (thread && canvas.contains(thread) && thread.getClientRects().length) {
-      // Centred, or its top a little below the canvas's when it's taller than the canvas.
-      const box = thread.getBoundingClientRect();
-      const by =
-        box.height > view.height - 80
-          ? box.top - view.top - 40
-          : box.top + box.height / 2 - (view.top + view.height / 2);
+      // Align the anchor line above the conversation, independently of response length.
+      let slotted: HTMLElement | null = thread;
+      while (slotted && !slotted.assignedSlot && slotted !== file) slotted = slotted.parentElement;
+      const annotation = slotted?.assignedSlot?.closest("[data-line-annotation]");
+      const line = annotation?.previousElementSibling;
+      const box = line?.getBoundingClientRect() ?? thread.getBoundingClientRect();
+      const chrome = getComputedStyle(canvas);
+      const clearance =
+        (canvas
+          .closest(".workspace-shell")
+          ?.querySelector(".workspace-bar")
+          ?.getBoundingClientRect().height || 44) +
+        (parseFloat(chrome.getPropertyValue("--review-gutter")) || 24);
+      const headerHeight =
+        file.querySelector(".review-file-header")?.getBoundingClientRect().height ?? 0;
+      const by = box.top - view.top - clearance - headerHeight - 24;
       if (Math.abs(by) < 2) return void (++held >= 4 && stop());
       held = 0;
       scroller.scrollTop += by;
@@ -1465,4 +1949,135 @@ function scrollToThread(canvas: HTMLElement, containerId: string, threadId: numb
   events.forEach((e) => canvas.addEventListener(e, stop));
   timer = setTimeout(go);
   return stop;
+}
+
+function GuideProgress({ workspaceId, hasGuide }: { workspaceId: number; hasGuide: boolean }) {
+  const jobs = useQuery(core("listJobs")).data ?? [];
+  const job = jobs.find((item) => item.workspaceId === workspaceId && item.kind === "guide");
+  if (!job || (job.state !== "running" && job.state !== "failed")) return null;
+  const label = match({ state: job.state, hasGuide })
+    .with({ state: "running", hasGuide: true }, () => "Updating guide…")
+    .with({ state: "running", hasGuide: false }, () => "Generating guide…")
+    .with({ state: "failed" }, () => "Guide update failed")
+    .exhaustive();
+  return (
+    <div role="status" className={cn("flex shrink-0 items-center gap-2 px-4 py-2 text-xs", muted)}>
+      {job.state === "running" && <SpinnerIcon />}
+      <span title={job.error ?? undefined}>{label}</span>
+      {job.state === "failed" && (
+        <>
+          <span className="min-w-0 flex-1 truncate" title={job.error ?? undefined}>
+            {job.error}
+          </span>
+          <Button variant="link" onClick={() => void window.coxswain.regenerateGuide(workspaceId)}>
+            Retry
+          </Button>
+        </>
+      )}
+    </div>
+  );
+}
+
+function UpdateGuideDialog({ workspaceId, onClose }: { workspaceId: number; onClose: () => void }) {
+  const query = useQuery(core("getGuideInstructions", workspaceId));
+  const settings = useQuery(core("getGuideSettings"));
+  const [override, setOverride] = useState<GuideOverride>({});
+  const [instructions, setInstructions] = useState<string>();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string>();
+  const update = async () => {
+    if (!query.isSuccess || !settings.isSuccess || saving) return;
+    setSaving(true);
+    setError(undefined);
+    try {
+      await window.coxswain.regenerateGuide(workspaceId, instructions ?? query.data, override);
+      onClose();
+    } catch (e) {
+      setError((e as Error).message);
+      setSaving(false);
+    }
+  };
+  return (
+    <Dialog
+      title="Update Guide"
+      subtitle="Choose what the guide should focus on."
+      onClose={onClose}
+    >
+      <DialogBody className="flex flex-col gap-3">
+        <label htmlFor="guide-instructions" className="text-[13px] font-medium">
+          Guide instructions
+        </label>
+        <TextArea
+          autoFocus
+          id="guide-instructions"
+          long
+          rows={5}
+          aria-label="Guide instructions"
+          placeholder="For example: focus on architecture and data flow, with concise explanations."
+          disabled={!query.isSuccess || saving}
+          value={instructions ?? query.data ?? ""}
+          onChange={(e) => setInstructions(e.target.value)}
+          onSubmit={update}
+        />
+        {(error || query.isError) && (
+          <ErrorText>{error ?? "Couldn’t load Guide instructions."}</ErrorText>
+        )}
+        <p className={cn("text-xs leading-5", muted)}>Saved for future automatic updates too.</p>
+        {settings.data && (
+          <div className="mt-2 border-t pt-4" style={{ borderColor: "var(--review-file-border)" }}>
+            <GuideRunOptions
+              workspaceId={workspaceId}
+              settings={settings.data}
+              value={override}
+              override
+              disabled={saving}
+              onChange={(value) => setOverride((before) => ({ ...before, ...value }))}
+            />
+            <p className={cn("mt-3 text-xs", muted)}>
+              Agent, model and effort overrides apply to this update only.
+            </p>
+          </div>
+        )}
+        {settings.isError && <ErrorText>Couldn’t load Guide defaults.</ErrorText>}
+      </DialogBody>
+      <DialogFooter>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button
+          variant="primary"
+          disabled={!query.isSuccess || !settings.isSuccess || saving}
+          onClick={update}
+        >
+          {saving ? "Starting…" : "Update Guide"}
+        </Button>
+      </DialogFooter>
+    </Dialog>
+  );
+}
+
+function FloatingReviewButton({
+  disabled,
+  count,
+  onPress,
+}: {
+  disabled: boolean;
+  count: number;
+  onPress: () => void;
+}) {
+  const occluded = useNativeOcclusion();
+  if (occluded) return null;
+  const label = count ? `Submit Review (${count})` : "Submit Review";
+  return (
+    <div className="absolute right-3 bottom-3 z-40 w-40">
+      <NativeToolbar compact controls={[{ id: "submit-review", label, disabled, onPress }]}>
+        <Button
+          variant="primary"
+          className="min-h-8 w-full rounded-xl px-3 py-1 text-xs shadow-lg"
+          disabled={disabled}
+          onClick={onPress}
+        >
+          {label}
+        </Button>
+      </NativeToolbar>
+    </div>
+  );
 }
