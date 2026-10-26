@@ -47,7 +47,7 @@ import {
   Splitter,
   viewerMin,
 } from "./components/layout";
-import { cn, divider, muted, reviewCard, reviewGutter, titleBar } from "./components/styles";
+import { cn, divider, muted, reviewCard, reviewGutter } from "./components/styles";
 import { prepareGuide } from "./prepare-guide";
 import { RetainedCanvas } from "./components/RetainedCanvas";
 import { RetainedNavigator } from "./Navigator";
@@ -1455,10 +1455,7 @@ export function App() {
           onFocusCapture={() => activateFindPane("canvas")}
         >
           {!currentWorkspace ? (
-            <>
-              <div className={cn(titleBar, "border-b", divider)} />
-              <Centered>No open tabs. Reopen a workspace with ⌘K, or start one with +</Centered>
-            </>
+            <Centered>No open tabs. Reopen a workspace with ⌘K, or start one with +</Centered>
           ) : (
             <div className="flex min-h-0 flex-1">
               {

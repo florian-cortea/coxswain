@@ -3,6 +3,10 @@
 Where the build stands and what we owe. Newest entry first. Terms are defined in
 [the glossary](context/coxswain.md); decisions are in [the ADRs](adr/).
 
+## 2026-10-26 — Clickable workspace bar with no open tabs
+
+- With every workspace tab closed or removed, the window took no clicks in its top bar. The empty canvas still drew its own placeholder title bar, an empty `-webkit-app-region: drag` strip that sat under the absolutely positioned workspace bar and, coming later in the DOM, overrode its buttons' `no-drag`. The placeholder is gone; the workspace bar is the only title bar there.
+
 ## 2026-10-26 — Cross-platform release packaging
 
 - Enforce LF checkout for dependency patches with .gitattributes. Windows checkout had converted them to CRLF, causing pnpm 12 to reject the patch header as an invalid unquoted filename. The v1.8.0 build stopped before publication; v1.8.1 contains this packaging fix.
