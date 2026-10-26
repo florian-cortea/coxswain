@@ -134,12 +134,14 @@ type RunOptions = {
   picks?: Picks;
   oneShot?: string;
   discovery?: boolean;
+  strictPicks?: boolean;
 };
-// onPermission resolves with the option picked, or null to cancel. Without it, every request is rejected. onQueued:
+// onPermission resolves with the option picked, or null to cancel. Returning void leaves the request pending
+// for answerPermission from the session projection; a bare run without a handler rejects. onQueued:
 // runTurn's message waits behind the running turn.
 type RunHandlers = {
   onEntry?: (entry: ChatEntry) => void;
-  onPermission?: (p: Permission) => Promise<string | null>;
+  onPermission?: (p: Permission) => Promise<string | null> | void;
   onQueued?: () => void;
 };
 
@@ -441,11 +443,12 @@ async function askPermission(
   const id = randomUUID();
   const optionId = await new Promise<string | null>((resolve) => {
     pending.set(id, { sessionId, resolve });
-    ask({
+    const response = ask({
       id,
       title: p.toolCall.title ?? "Use a tool",
       options: p.options.map((o) => ({ id: o.optionId, name: o.name, kind: o.kind })),
-    }).then(resolve);
+    });
+    if (response) void response.then(resolve, () => resolve(null));
   });
   pending.delete(id);
   sessionStates.permission(sessionId, null);
@@ -504,7 +507,11 @@ async function openSession(name: Agent, o: RunOptions): Promise<{ a: Adapter; se
       (c) => c.category === category[pick],
     );
     if (!value || option?.type !== "select") continue;
-    const picked = pickOf(choicesOf(option), value, !!o.oneShot || !!o.discovery);
+    const picked = pickOf(
+      choicesOf(option),
+      value,
+      !!o.oneShot || !!o.discovery || !!o.strictPicks,
+    );
     if (!picked || option.currentValue === picked) continue;
     const set: acp.SetSessionConfigOptionResponse = await a.agent.request(
       acp.methods.agent.session.setConfigOption,
@@ -928,15 +935,17 @@ export async function startAgentSession(
   db: Db,
   workspaceId: number,
   agent?: Agent,
+  options: { select?: boolean; picks?: Picks; title?: string } = {},
 ): Promise<AgentSession> {
-  const picked = !!agent;
-  if (agent) await saveSetting(db, "agent", agent);
+  const picked = !!agent && options.select !== false;
+  if (picked && agent) await saveSetting(db, "agent", agent);
   agent ??= await newSessionAgent(db);
   const cwd = await openedWorktree(db, workspaceId);
   const id = await newSession(agent, {
     cwd,
     mcp: await paneTools(db, workspaceId),
-    picks: await agentPicks(db, agent),
+    picks: options.picks ?? (await agentPicks(db, agent)),
+    strictPicks: !!options.picks,
   });
   await sessionStates.read(id, async () => []);
   const now = new Date().toISOString();
@@ -947,7 +956,8 @@ export async function startAgentSession(
       agent,
       agent_session_id: id,
       created_at: now,
-      used_at: now,
+      used_at: options.select === false ? "" : now,
+      title: options.title ?? null,
     })
     .returning(columns)
     .executeTakeFirstOrThrow();
@@ -1170,6 +1180,7 @@ export async function runTurn(
   prompt: string,
   handlers: RunHandlers,
   attachments: Attachment[] = [],
+  options: { select?: boolean; picks?: Picks; restorePicks?: boolean; onStart?: () => void } = {},
 ): Promise<TurnResult> {
   let started = false;
   let result: TurnResult = { status: "ok" };
@@ -1182,7 +1193,7 @@ export async function runTurn(
     const attachmentId = attachments.length
       ? await saveAttachments(db, agentSessionId, attachments)
       : null;
-    await pickAgentSession(db, agentSessionId);
+    if (options.select !== false) await pickAgentSession(db, agentSessionId);
     const entry = withComment({
       kind: "user",
       text: prompt,
@@ -1216,6 +1227,7 @@ export async function runTurn(
     }
     if (!go) return { status: "unsent" };
     started = true;
+    options.onStart?.();
     const streaming: RunHandlers = {
       onEntry: (entry) => {
         sessionStates.entry(agentSessionId, entry);
@@ -1223,12 +1235,20 @@ export async function runTurn(
       },
       onPermission: (permission) => {
         sessionStates.permission(agentSessionId, permission);
-        return handlers.onPermission?.(permission) ?? Promise.resolve(null);
+        return handlers.onPermission?.(permission);
       },
     };
     streaming.onEntry?.(entry);
     // ADR 0028: the worktree before and after, for the turn's diff. A stopped or failed turn may have changed it too.
     const before = await snapshotOf(cwd).catch(() => null);
+    const previousPicks: Picks = {};
+    if (options.restorePicks)
+      for (const pick of ["model", "effort"] as const) {
+        const config = configs
+          .get(agentSessionId)
+          ?.find((option) => option.category === category[pick]);
+        if (config?.type === "select") previousPicks[pick] = String(config.currentValue);
+      }
     try {
       await run(
         agent,
@@ -1238,11 +1258,23 @@ export async function runTurn(
           attachments,
           session: agentSessionId,
           mcp: await paneTools(db, workspaceId),
-          picks: await agentPicks(db, agent),
+          picks: options.picks ?? (await agentPicks(db, agent)),
+          strictPicks: !!options.picks,
         },
         streaming,
       );
     } finally {
+      if (options.restorePicks && Object.keys(previousPicks).length) {
+        await openSession(agent, {
+          cwd,
+          prompt: "",
+          session: agentSessionId,
+          mcp: await paneTools(db, workspaceId),
+          picks: previousPicks,
+        }).catch((error) =>
+          console.warn("Could not restore session choices after Guide turn", error),
+        );
+      }
       turnEnded(workspaceId);
       const after = before && (await snapshotOf(cwd).catch(() => null));
       if (after && after !== before)

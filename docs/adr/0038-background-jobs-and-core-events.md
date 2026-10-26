@@ -8,21 +8,21 @@ Accepted
 
 ## Context
 
-coxswain generates reading guides and summarizes agent threads as review comments. Both need one reliable runner with bounded concurrency, retries, cancellation and Activity history.
+coxswain generates reading guides and summarizes agent threads as review comments. Comment summaries use the job runner; Guide generation uses a durable visible Chat session (ADR 0023).
 
 ## Decision
 
-1. Background work runs through `JobSpec` in `src/core/jobs.ts`, with six shared slots, retries, cancellation and persisted job history. Guides supply their dedicated Settings agent/model; comment summaries retain their configured one-shot runner.
-2. Core writes emit typed events. The main process forwards them to renderer queries; `background.ts` starts Guide jobs on opened/worktree/GitHub events and forces regeneration on an explicit guide event. The UI owns no runner or polling timers.
-3. Guide checks coalesce; changed ranges supersede older runs. Complete pinned views publish atomically, retaining the old guide on failure. Sidebar progress and Activity report results.
-4. Guide agent/model/effort defaults persist per agent in SQLite. A manual guide event may carry a one-update model/effort override; queued forced requests retain it while automatic events coalesce. The one-shot runner sets model before effort and retains the chosen effort across job retries. Guide defaults are independent of retired summary preferences and start with Claude Code/Opus (currently 5.5). Changing them affects subsequent runs; Update Guide explicitly regenerates the current range.
+1. Background comment summaries run through `JobSpec` in `src/core/jobs.ts`, with shared slots, retries, cancellation and persisted job history. Historical Guide/file job rows remain readable.
+2. Core writes emit typed events. The main process forwards them to renderer queries; `background.ts` routes opened/worktree/GitHub and explicit guide events to the workspace’s Guide session. The UI owns no runner or polling timers.
+3. Guide generation is a normal queued Chat turn, not a background-agent job. It reuses the persisted session, surfaces permissions and transcript in Chat, and publishes a complete pinned replacement atomically after validation. Preparation and follow-ups coalesce; stale publication is rejected. The Guide sidebar shows progress and links to the session. There is no Activity panel.
+4. Guide defaults and per-update model/effort overrides remain independent of comment-summary preferences. Explicit agent changes replace the Guide session; automatic updates retain its identity. Run metadata and session binding live in SQLite settings. See ADR 0023 for lifecycle and retry behavior.
 5. File-summary jobs, caches, tools and work-ahead controls are retired. Historical job rows and immutable schema migrations remain readable; no destructive schema migration is needed.
 
 ## Alternatives considered
 
 - **A timer in the UI** that asks the core for work a moment after something changes. A few lines, but the UI then
   decides when model runs happen (against ADR 0002), it stops when its component isn't there, and its runs have no
-  retries and don't show in Activity.
+  retries and have no persisted job history.
 - **A second job runner for thread summaries**, beside the file summaries'. Each would grow its own retries, limits and history;
   the two are the same shape.
 - **A stored queue** (jobs written before they run, picked up by workers, resumed after a restart). Needed once work
@@ -37,5 +37,3 @@ coxswain generates reading guides and summarizes agent threads as review comment
 - A thread summary costs a model run only when the user asks for one.
 - `summary_jobs` became `jobs` (a migration); a job has a `kind`, and its count is `items`, not `files`.
 - A job is tied to one workspace and runs on the summary agent; work that fits neither needs the spec widened.
-
-Guide jobs start on opened/worktree/GitHub events; an explicit guide event retries them. Duplicate checks coalesce, changed ranges supersede older runs, and stale output is discarded before publication. Jobs use the same runner, limits, retries, history and Activity as comment summaries.

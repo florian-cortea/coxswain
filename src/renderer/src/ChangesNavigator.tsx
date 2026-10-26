@@ -223,6 +223,7 @@ function ChangesTree(
       }
       current={props.selected === path}
       reviewed={props.reviewed.includes(path)}
+      changedSinceReview={props.changedSinceReview.includes(path)}
       onReviewed={(on) => props.onReviewedChange(path, on)}
       onOpen={() => props.onOpen(path)}
       threads={props.byFile.get(path) ?? []}

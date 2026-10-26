@@ -37,6 +37,7 @@ export type NavigatorProps = {
   view: NavigatorView;
   layout: "tree" | "list"; // the canvas's display options
   reviewed: string[];
+  changedSinceReview: string[];
   showReviewed: boolean;
   onShowReviewed: (show: boolean) => void;
   entries: ReviewEntry[]; // the workspace's, counted per file
@@ -96,6 +97,7 @@ export function Navigator({
   view,
   layout,
   reviewed,
+  changedSinceReview,
   showReviewed,
   onShowReviewed,
   entries,
@@ -156,6 +158,7 @@ export function Navigator({
         view={view}
         layout={layout}
         reviewed={reviewed}
+        changedSinceReview={changedSinceReview}
         showReviewed={showReviewed}
         onShowReviewed={onShowReviewed}
         entries={entries}

@@ -37,13 +37,13 @@ SQLite uses `node:sqlite`; native Liquid Glass adds an native macOS addon (ADR 0
    an explicit override. Other platforms launch the ordinary runtime.
    The `.icon` project is editable source; it is not compiled into Electron's bundle as a native layered icon.
 2. **Releases start from a button.** Actions → _Release_ → _Run workflow_ with a version (`.github/workflows/release.yml`)
-   sets it in `package.json`, commits _Release vX_ to `main`, tags `vX`, builds the tag on one runner per OS and
+   sets it in `package.json`, commits _Release vX_ to `main` when the version changes, tags `vX`, builds the tag on one runner per OS and
    creates the GitHub release with the files and GitHub's generated notes (the PRs merged since the last release).
    A version with a pre-release part (`0.1.0-rc.1`) makes a GitHub pre-release. Pushing a tag by hand does nothing.
 3. **The build knows its version and commit**: `__VERSION__` (from `package.json`) and `__COMMIT__`
    (`git rev-parse`) are defined in the renderer and shown in Settings.
-4. **CI runs typecheck, lint, format check and build** on every push to `main` and every pull request
-   (`.github/workflows/ci.yml`).
+4. **CI runs tests, typecheck, lint, format check and build** on every push to `main` and every pull request
+   (`.github/workflows/ci.yml`). CI and release builds use Node 26 and pnpm 12.3.4, matching the validated patched-dependency lockfile. Node is installed before pnpm; dependency installation is frozen.
 5. **Unsigned for now.** macOS builds aren't signed or notarized, so Gatekeeper blocks the first launch
    (right-click → Open, or `xattr -cr coxswain.app`). Windows builds aren't signed either.
 6. **`install.sh` installs on macOS and Linux**, piped from `curl` (README): it resolves the latest release by

@@ -1,3 +1,5 @@
+import { rememberGuideReviewBaseline } from "./reviewed.ts";
+import { getDefaultPrompts } from "./prompt-settings.ts";
 import type { McpTool } from "./agents";
 import type { Db } from "./db";
 import { emit } from "./events.ts";
@@ -174,21 +176,11 @@ Three kinds of fenced blocks do more than show code:
 Each path can be embedded once, as either a file or a diff. Views can contain only prose and diagrams and need no diff.
 Before an embedded file or diff, write a sentence or two saying what it does in this change and why that matters.`;
 
-export const guideStyle = `Write a concise reading guide. Group implementation changes into thematic sections, core behavior first.
-End with a separate Tests section containing all test files, then a separate Generated section containing all generated files.
-Omit an ending section when its group is empty. Use each file's supplied group when available; generated artifacts take precedence over tests.
-Use short descriptive headings and one or two short sentences per section explaining
-intent, behavior and connections that help the reader understand the change. The code is visible in adjacent cards:
-keep code snippets, pseudocode and line-by-line restatements out of the prose. A plain guide describes; it adds no review
-findings, checklists, merge-risk report or chat recap. Embed every changed file exactly once.`;
-
-const howToGuide = `${guideStyle}
-1. Read writing-beats with read_skill for section order. For a requested review, also read pr and code-review.
-2. Read the relevant diffs from the listed files, then group the changes into concise thematic sections.
-3. Write sections with short headings, concise prose and empty diff path= fences. An optional opening section is at
-   most two sentences of intent. Keep implementation details in the embedded cards. Use a small Mermaid diagram
-   only when it makes a relationship clearer than prose; ordinary code fences belong in the file cards.
-4. Embed every changed file once. Put generated files last in their own muted section, with a single short sentence.
+const howToGuide = (style: string) => `${style}
+1. Follow the writing instructions above for focus, style and section order. Read writing-beats with read_skill for additional guidance consistent with those instructions. For a requested review, also read pr and code-review.
+2. Read the relevant diffs from the listed files, then organize them according to the writing instructions.
+3. Write sections using empty diff path= fences for embedded files. Follow the writing instructions for headings, prose and diagrams.
+4. Embed every changed file once. Mark generated files muted.
 5. Use add_explanation sparingly for context the code cannot show. Add findings only for an explicitly requested review.
 6. Give write_section several sections in one call. Finish when every changed file is embedded; acknowledge in one line.`;
 
@@ -221,6 +213,13 @@ const filesAt = (db: Db, workspaceId: number, head: string) =>
 
 // write_section and remove_section change a view one at a time, each on the view as the one before left it: two
 // sessions or subagents writing at once would otherwise both start from the same sections, and the last write would win.
+async function requireInteractiveGuideWrite(db: Db, workspaceId: number) {
+  const { guidePublicationActive } = await import("./guides.ts");
+  if (guidePublicationActive(workspaceId))
+    throw new Error(
+      "A Guide session update is in progress. Complete that request with publish_guide so the existing Guide stays readable.",
+    );
+}
 const changing = new Map<number, Promise<unknown>>();
 async function changeView<T>(
   db: Db,
@@ -228,6 +227,7 @@ async function changeView<T>(
   id: number | undefined,
   change: (view: Awaited<ReturnType<typeof toolView>>) => Promise<T>,
 ): Promise<T> {
+  await requireInteractiveGuideWrite(db, workspaceId);
   const viewId = (await toolView(db, workspaceId, id)).id;
   const next = (changing.get(viewId) ?? Promise.resolve())
     .catch(() => {})
@@ -405,6 +405,38 @@ const destructiveTool = { readOnlyHint: false, destructiveHint: true, openWorldH
 export function viewTools(db: Db, workspaceId: number): McpTool[] {
   return [
     {
+      name: "publish_guide",
+      annotations: closedTool,
+      description:
+        "Publish a complete Guide for a requested session update, keeping the preceding Guide intact until all sections are ready. Use the request_id supplied in that update and include every listed changed file exactly once.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          request_id: { type: "string" },
+          sections: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                title: { type: "string" },
+                body: { type: "string" },
+                files: { type: "array", items: { type: "string" } },
+              },
+              required: ["title", "body", "files"],
+            },
+          },
+        },
+        required: ["request_id", "sections"],
+      },
+      call: async (args: { request_id: string; sections: unknown }) =>
+        (await import("./guides.ts")).publishRequestedGuide(
+          db,
+          workspaceId,
+          args.request_id,
+          args.sections,
+        ),
+    },
+    {
       name: "start_guide",
       annotations: closedTool,
       description:
@@ -425,6 +457,7 @@ export function viewTools(db: Db, workspaceId: number): McpTool[] {
         },
       },
       call: async (v: { base?: string; head?: string }) => {
+        await requireInteractiveGuideWrite(db, workspaceId);
         const at = (await openedBefore(db, workspaceId)) ?? (await openWorktree(db, workspaceId));
         if (at.status !== "ok")
           throw new Error("message" in at ? at.message : `GitHub: ${at.status}`);
@@ -446,7 +479,7 @@ export function viewTools(db: Db, workspaceId: number): McpTool[] {
           `Read a diff with \`git diff ${base} ${head} -- <path>\`. Line numbers are the file's at the head (side "new") or, for removed lines, at the base (side "old").`,
           `Read a source file with \`git show ${head}:<path>\`; list available files with \`git ls-tree -r --name-only ${head}\`. Source-file line annotations use side "new".`,
           howToView,
-          howToGuide,
+          howToGuide((await getDefaultPrompts(db)).guide.value),
           files.length
             ? `${listHeader(files, 0, listed.next)}\n${listed.text}${listRest(files, listed.next)}`
             : "Changed files: none. You can still explain existing code with source files, prose and diagrams.",
@@ -689,6 +722,7 @@ async function replaceGuide(
   sections: string[],
   worktree = true,
 ) {
+  await rememberGuideReviewBaseline(db, workspaceId, { base, head });
   return db.transaction().execute(async (tx) => {
     const current = await tx
       .selectFrom("views")

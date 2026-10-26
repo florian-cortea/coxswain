@@ -29,16 +29,18 @@ import {
   SlidersIcon,
   PanelLeftIcon,
   XIcon,
-  ActivityIcon,
   GitHubIcon,
   githubMark,
-  SpinnerIcon,
 } from "./components/icons";
 import { cn, divider, muted, noDrag, titleBar } from "./components/styles";
 import { gitHubOf, projectLabel, workspaceLabel } from "./format";
 import { core } from "./queries";
 
 type Props = {
+  settingsOpen: boolean;
+  settingsActive: boolean;
+  onSelectSettings: () => void;
+  onCloseSettings: () => void;
   project: Project;
   cloning: boolean;
   workspaces: Workspace[];
@@ -51,8 +53,6 @@ type Props = {
   agentsOpen: boolean;
   onToggleAgents: () => void;
   onSettings: () => void;
-  onActivity: () => void;
-  activityOpen: boolean;
   paneOpen: boolean;
   onTogglePane: () => void;
   onShowPr: () => void;
@@ -63,6 +63,10 @@ type Props = {
 // L1: project switching and workspace tabs. Titles come from GitHub, with branch/number fallbacks offline.
 // Agent status stays visible while chat is collapsed; selecting a workspace clears its done marker.
 export function WorkspaceTabs({
+  settingsOpen,
+  settingsActive,
+  onSelectSettings,
+  onCloseSettings,
   project,
   cloning,
   workspaces,
@@ -75,8 +79,6 @@ export function WorkspaceTabs({
   agentsOpen,
   onToggleAgents,
   onSettings,
-  onActivity,
-  activityOpen,
   paneOpen,
   onTogglePane,
   onShowPr,
@@ -94,9 +96,6 @@ export function WorkspaceTabs({
       query?.queryKey[1] === repo?.owner && query?.queryKey[2] === repo?.name ? before : undefined,
   }).data;
   const statuses = useQuery(core("listAgentStatuses")).data ?? {};
-  const activityRunning = (useQuery(core("listJobs")).data ?? []).some(
-    (job) => job.state === "running",
-  );
   const openPreview = async () => {
     const deployments = pullRequest?.deployments ?? [];
     if (deployments.length === 1) {
@@ -122,10 +121,14 @@ export function WorkspaceTabs({
     tabs.current
       ?.querySelector('[aria-selected="true"]')
       ?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [shown]);
+  }, [shown, settingsActive, settingsOpen]);
   const pulls = new Map(titles?.status === "ok" ? titles.pulls.map((p) => [p.number, p]) : []);
   return (
     <NativeWorkspaceBar
+      settingsOpen={settingsOpen}
+      settingsActive={settingsActive}
+      onSelectSettings={onSelectSettings}
+      onCloseSettings={onCloseSettings}
       project={project}
       cloning={cloning}
       workspaces={workspaces}
@@ -138,9 +141,6 @@ export function WorkspaceTabs({
       agentsOpen={agentsOpen}
       onToggleAgents={onToggleAgents}
       onSettings={onSettings}
-      onActivity={onActivity}
-      activityOpen={activityOpen}
-      activityRunning={activityRunning}
       paneOpen={paneOpen}
       onTogglePane={onTogglePane}
       onShowPr={onShowPr}
@@ -201,7 +201,7 @@ export function WorkspaceTabs({
               key={w.id}
               workspace={w}
               pull={w.prNumber !== null ? pulls.get(w.prNumber) : undefined}
-              selected={w.id === current?.id}
+              selected={!settingsActive && w.id === current?.id}
               status={statuses[w.id] ?? "idle"}
               onClick={() => onSelect(w)}
               onClose={() => onClose(w)}
@@ -210,6 +210,23 @@ export function WorkspaceTabs({
               }}
             />
           ))}
+          {settingsOpen && (
+            <div className="group flex shrink-0 items-center">
+              <ToggleButton
+                on={settingsActive}
+                role="tab"
+                aria-selected={settingsActive}
+                onClick={onSelectSettings}
+                className="px-3"
+              >
+                <SlidersIcon />
+                <span>Settings</span>
+              </ToggleButton>
+              <Button variant="ghost" aria-label="Close Settings tab" onClick={onCloseSettings}>
+                <XIcon />
+              </Button>
+            </div>
+          )}
         </div>
         <div className={cn("workspace-actions flex shrink-0 items-center p-0.5", noDrag)}>
           <Button
@@ -256,16 +273,6 @@ export function WorkspaceTabs({
           </ToggleButton>
           <Button
             variant="ghost"
-            title={activityRunning ? "Activity: working" : "Activity"}
-            aria-label="Activity"
-            aria-expanded={activityOpen}
-            className={cn("size-7 p-1", muted)}
-            onClick={onActivity}
-          >
-            {activityRunning ? <SpinnerIcon /> : <ActivityIcon />}
-          </Button>
-          <Button
-            variant="ghost"
             title="Settings"
             aria-label="Settings"
             className={cn("shrink-0 p-1", noDrag)}
@@ -296,7 +303,6 @@ function NativeWorkspaceBar(
     pulls: Map<number, PullRequestTitle>;
     statuses: Record<number, AgentStatus>;
     children: ReactNode;
-    activityRunning: boolean;
   },
 ) {
   const appearance = useQuery(core("getAppearance")).data;
@@ -334,12 +340,34 @@ function NativeWorkspaceBar(
   const current = props.current;
   const layout = workspaceStripLayout(
     width,
-    props.workspaces.length,
-    props.workspaces.findIndex((w) => w.id === current?.id),
+    props.workspaces.length + Number(props.settingsOpen),
+    props.settingsActive
+      ? props.workspaces.length
+      : props.workspaces.findIndex((w) => w.id === current?.id),
   );
+  const settingsHover = {
+    hoverAction: { id: "close-settings", symbol: "xmark", help: "Close Settings tab" },
+  };
   const tabNodes = layout.indices.flatMap((index, i): GlassNode[] => {
     const w = props.workspaces[index];
-    const selected = w.id === current?.id;
+    if (!w)
+      return [
+        ui.button({
+          id: "select-settings",
+          ...settingsHover,
+          label: ui.hstack({ spacing: 8 }, [
+            ui.symbol("slider.horizontal.3", { size: 12 }),
+            ui.text("Settings", { lineLimit: 1 }),
+          ]),
+          frame: { width: layout.tabWidth, height: 28 },
+          padding: { horizontal: 10 },
+          font: { size: 12, weight: props.settingsActive ? "medium" : "regular" },
+          glass: props.settingsActive ? { shape: "capsule", interactive: true } : undefined,
+          accessibilityLabel: props.settingsActive ? "Current tab: Settings" : "Settings tab",
+          disabled: occluded,
+        }),
+      ];
+    const selected = !props.settingsActive && w.id === current?.id;
     const pull = w.prNumber !== null ? props.pulls.get(w.prNumber) : undefined;
     const status = props.statuses[w.id] ?? "idle";
     const icon = workspacePrSymbol(pull);
@@ -468,17 +496,6 @@ function NativeWorkspaceBar(
         ...iconButton("pr-overview", "doc.text", "Open pull request overview", props.prOpen),
         disabled: occluded || !props.pullRequest,
       },
-      {
-        ...iconButton(
-          "activity",
-          "waveform.path",
-          props.activityRunning ? "Activity: working" : "Activity",
-          props.activityOpen,
-        ),
-        label: props.activityRunning
-          ? ui.progress({ frame: { width: 14, height: 14 }, opacity: 0.65 })
-          : ui.symbol("waveform.path", { size: 15 }),
-      },
       iconButton("settings", "slider.horizontal.3", "Settings"),
       iconButton(
         "toggle-agents",
@@ -490,6 +507,8 @@ function NativeWorkspaceBar(
   );
   const press = ({ node }: { node: string }) => {
     match(node)
+      .with("select-settings", props.onSelectSettings)
+      .with("close-settings", props.onCloseSettings)
       .with("open-github", () => {
         if (props.pullRequest) window.open(props.pullRequest.url);
       })
@@ -516,12 +535,11 @@ function NativeWorkspaceBar(
       .with("new-workspace", () => props.onNew())
       .with("toggle-agents", () => props.onToggleAgents())
       .with("settings", () => props.onSettings())
-      .with("activity", () => props.onActivity())
       .with("pr-overview", () => props.onShowPr())
       .with("remove-workspace", () => current && props.onRemove(current))
       .otherwise(() => {
         const w = props.workspaces.find((w) => `select-${w.id}` === node);
-        if (w && w.id !== current?.id) props.onSelect(w);
+        if (w && (w.id !== current?.id || props.settingsActive)) props.onSelect(w);
       });
   };
   return (

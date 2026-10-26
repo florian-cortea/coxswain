@@ -857,22 +857,81 @@ export async function diffFingerprints(
   head?: string,
   kind: "diff" | "file" = "diff",
 ): Promise<Map<string, string>> {
+  return (await reviewFingerprints(db, workspaceId, base, files, head, kind)).current;
+}
+
+// Existing versions keyed diffs by base commit identity. Accept those marks only when that base's
+// file contents equal today's base, so an unrelated base update cannot discard completed review.
+export async function compatibleDiffFingerprints(
+  db: Db,
+  workspaceId: number,
+  base: string,
+  files: string[],
+  head: string | undefined,
+  legacyBases: string[],
+): Promise<Map<string, Set<string>>> {
+  return (await reviewFingerprints(db, workspaceId, base, files, head, "diff", legacyBases))
+    .accepted;
+}
+
+async function reviewFingerprints(
+  db: Db,
+  workspaceId: number,
+  base: string,
+  files: string[],
+  head: string | undefined,
+  kind: "diff" | "file",
+  legacyBases?: string[],
+) {
+  if (!files.length)
+    return { current: new Map<string, string>(), accepted: new Map<string, Set<string>>() };
   const path = await openedWorktree(db, workspaceId);
   const contents = head
     ? await readBlobs(path, head, files)
     : new Map(files.map((f) => [f, worktreeBytes(path, f)]));
-  const hash = (f: string) => {
-    const bytes = contents.get(f);
-    return (
-      (kind === "file" ? "file:" : "") +
-      createHash("sha1")
-        .update(kind === "file" ? "file" : base)
-        .update("\0")
-        .update(bytes ?? "deleted")
-        .digest("hex")
-    );
-  };
-  return new Map(files.map((f) => [f, hash(f)]));
+  const old =
+    kind === "diff" ? await readBlobs(path, base, files) : new Map<string, Buffer | null>();
+  const digest = (bytes: Buffer | null | undefined) =>
+    bytes == null ? "absent" : createHash("sha1").update(bytes).digest("hex");
+  const current = new Map(
+    files.map((f) => {
+      const bytes = contents.get(f);
+      const fingerprint =
+        kind === "file"
+          ? "file:" +
+            createHash("sha1")
+              .update("file")
+              .update("\0")
+              .update(bytes ?? "deleted")
+              .digest("hex")
+          : "diff:" +
+            createHash("sha1")
+              .update(digest(old.get(f)))
+              .update("\0")
+              .update(digest(bytes))
+              .digest("hex");
+      return [f, fingerprint] as const;
+    }),
+  );
+  const accepted = new Map([...current].map(([f, hash]) => [f, new Set([hash])]));
+  for (const previousBase of new Set(legacyBases === undefined ? [] : [base, ...legacyBases])) {
+    if (!isCommit(previousBase)) continue;
+    const previous =
+      previousBase === base
+        ? old
+        : await readBlobs(path, previousBase, files).catch(() => new Map<string, Buffer | null>());
+    for (const f of files) {
+      if (!previous.has(f) || digest(previous.get(f)) !== digest(old.get(f))) continue;
+      accepted.get(f)?.add(
+        createHash("sha1")
+          .update(previousBase)
+          .update("\0")
+          .update(contents.get(f) ?? "deleted")
+          .digest("hex"),
+      );
+    }
+  }
+  return { current, accepted };
 }
 
 // Files as text in a view of the diff: at a commit, or in the worktree without one; null where the file isn't there.

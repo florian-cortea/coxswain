@@ -16,6 +16,7 @@ export function SidebarFileThreads(props: {
   showFolder: boolean;
   current?: boolean;
   reviewed?: boolean;
+  changedSinceReview?: boolean;
   onReviewed?: (on: boolean) => void;
   onOpen: () => void;
   threads: ReviewEntry[];
@@ -45,6 +46,7 @@ export function SidebarFileThreads(props: {
             </span>
             <SidebarFileLabel
               path={path}
+              changedSinceReview={props.changedSinceReview && !props.reviewed}
               showFolder={props.showFolder}
               deleted={file?.status === "deleted"}
               color={fileStatusColor(file?.status)}

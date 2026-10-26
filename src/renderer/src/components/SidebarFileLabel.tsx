@@ -6,6 +6,7 @@ export function SidebarFileLabel(props: {
   showFolder?: boolean;
   directory?: boolean;
   deleted?: boolean;
+  changedSinceReview?: boolean;
   color?: string;
 }) {
   const slash = props.path.lastIndexOf("/");
@@ -18,6 +19,14 @@ export function SidebarFileLabel(props: {
       data-deleted={props.deleted}
       style={{ color: props.color }}
     >
+      {props.changedSinceReview && (
+        <span
+          className="sidebar-file-changed"
+          role="img"
+          aria-label="Changed since last review"
+          title="Changed since last review"
+        />
+      )}
       <span className="sidebar-file-label-name" title={props.path}>
         {props.name ?? props.path.slice(slash + 1)}
       </span>

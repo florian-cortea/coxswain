@@ -1,19 +1,36 @@
+import type { DefaultPromptName } from "../../core/prompt-settings";
+import { TextArea } from "./components/field";
 import { File } from "@pierre/diffs/react";
 import { codeThemes } from "./components/code-theme";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { CodeTheme, Appearance as AppearanceMode } from "../../core/appearance";
 import type { CurrentUser } from "../../core/github";
 import type { GuideSettings } from "../../core/guides";
 import { Button, SegmentedControl } from "./components/button";
-import { Card, Screen } from "./components/layout";
-import { muted } from "./components/styles";
+import { Card, Screen, ListRow } from "./components/layout";
+import { cn, muted } from "./components/styles";
 import { ErrorText, ProblemMessage } from "./components/text";
 import { core } from "./queries";
 import { GuideRunOptions } from "./components/GuideRunOptions";
 
+const settingsSections = ["Appearance", "Accounts", "Guides", "About"] as const;
+type SettingsSection = (typeof settingsSections)[number];
+
+const sectionHeading = "mb-3 text-sm font-semibold leading-5";
+const helpText = cn("max-w-[80ch] text-xs leading-5", muted);
+
 // Ask the installed agent for models using the open workspace.
-export function Settings({ onClose, workspaceId }: { onClose: () => void; workspaceId?: number }) {
+export function Settings({
+  onClose,
+  workspaceId,
+  embedded = false,
+}: {
+  onClose: () => void;
+  workspaceId?: number;
+  embedded?: boolean;
+}) {
+  const [section, setSection] = useState<SettingsSection>("Appearance");
   const [user, setUser] = useState<CurrentUser | null>(null);
   const check = () => {
     setUser(null);
@@ -21,39 +38,97 @@ export function Settings({ onClose, workspaceId }: { onClose: () => void; worksp
   };
   useEffect(check, []);
 
-  return (
-    <Screen title="Settings" onClose={onClose} className="max-w-xl overflow-auto">
-      <h2 className="mb-2 font-medium">Appearance</h2>
-      <Appearance />
-      <h2 className="mt-6 mb-2 font-medium">Code Theme</h2>
-      <CodeThemes />
-      <h2 className="mt-6 mb-2 font-medium">GitHub account</h2>
-      <Card className="flex min-h-16 items-center gap-3">
-        {!user ? (
-          <span className={muted}>Checking…</span>
-        ) : user.status === "signed-in" ? (
-          <>
-            <img src={user.avatarUrl} alt="" className="size-10 rounded-full" />
-            <div>
-              <div className="font-medium">{user.name ?? user.login}</div>
-              <div className={muted}>@{user.login} · signed in through the GitHub CLI</div>
-            </div>
-          </>
-        ) : (
-          <>
-            <ProblemMessage problem={user} />
-            <Button className="ml-auto shrink-0" onClick={check}>
-              Check again
-            </Button>
-          </>
-        )}
-      </Card>
-      <h2 className="mt-6 mb-2 font-medium">Guides</h2>
-      <GuideModels workspaceId={workspaceId} />
-      <h2 className="mt-6 mb-2 font-medium">About</h2>
+  const panels: Record<SettingsSection, ReactNode> = {
+    Appearance: (
+      <>
+        <h3 className={sectionHeading}>Colour Mode</h3>
+        <Appearance />
+        <h3 className={cn(sectionHeading, "mt-6")}>Code Theme</h3>
+        <CodeThemes />
+      </>
+    ),
+    Accounts: (
+      <>
+        <h3 className={sectionHeading}>GitHub</h3>
+        <Card className="flex min-h-16 items-center gap-3">
+          {!user ? (
+            <span className={muted}>Checking…</span>
+          ) : user.status === "signed-in" ? (
+            <>
+              <img src={user.avatarUrl} alt="" className="size-10 rounded-full" />
+              <div>
+                <div className="font-medium">{user.name ?? user.login}</div>
+                <div className={muted}>@{user.login} · signed in through the GitHub CLI</div>
+              </div>
+            </>
+          ) : (
+            <>
+              <ProblemMessage problem={user} />
+              <Button className="ml-auto shrink-0" onClick={check}>
+                Check again
+              </Button>
+            </>
+          )}
+        </Card>
+      </>
+    ),
+    Guides: (
+      <>
+        <h3 className={sectionHeading}>Generation</h3>
+        <GuideModels workspaceId={workspaceId} />
+        <h3 className={cn(sectionHeading, "mt-6")}>Default Prompts</h3>
+        <DefaultPromptSettings />
+      </>
+    ),
+    About: (
       <Card className="select-text">
         coxswain {__VERSION__} <span className={muted}>· {__COMMIT__}</span>
       </Card>
+    ),
+  };
+  const content = (
+    <div className="settings-shell flex min-h-0 flex-1 text-[13px] leading-5">
+      <nav
+        aria-label="Settings sections"
+        className={cn(
+          "settings-navigation flex w-48 shrink-0 flex-col gap-1 overflow-y-auto p-3 text-[13px]",
+        )}
+      >
+        {settingsSections.map((name) => (
+          <ListRow
+            key={name}
+            data-sidebar-row="true"
+            data-sidebar-current={section === name}
+            aria-current={section === name ? "page" : undefined}
+            aria-controls={`settings-${name.replaceAll(" ", "-")}`}
+            onClick={() => setSection(name)}
+            className={cn(section !== name && muted)}
+          >
+            {name}
+          </ListRow>
+        ))}
+      </nav>
+      <div className="min-w-0 flex-1 overflow-y-auto p-6">
+        {settingsSections.map((name) => (
+          <section
+            key={name}
+            id={`settings-${name.replaceAll(" ", "-")}`}
+            aria-label={name}
+            className="w-full max-w-[80ch]"
+            hidden={section !== name}
+          >
+            <h2 className="mb-6 text-lg leading-6 font-semibold">{name}</h2>
+            {panels[name]}
+          </section>
+        ))}
+      </div>
+    </div>
+  );
+  return embedded ? (
+    content
+  ) : (
+    <Screen title="Settings" onClose={onClose} edgeToEdge>
+      {content}
     </Screen>
   );
 }
@@ -85,7 +160,7 @@ function Appearance() {
       ) : (
         <span className={muted}>Loading…</span>
       )}
-      <p className={muted}>
+      <p className={helpText}>
         System follows your operating system’s appearance. Soft Dark uses lighter charcoal surfaces.
       </p>
       {query.isError && <ErrorText>Couldn't load appearance.</ErrorText>}
@@ -109,12 +184,12 @@ function GuideModels({ workspaceId }: { workspaceId?: number }) {
   };
   return (
     <Card className="flex flex-col gap-3">
-      <p className={muted}>
-        Choose the agent, model and effort that generate and update Guides. Progress appears in the
-        Guide sidebar. Use Update Guide in its dots menu to regenerate manually.
+      <p className={helpText}>
+        The agent creates each workspace’s Guide chat session. Updates continue in that session;
+        model and effort defaults apply to its future turns.
       </p>
       <div className="flex flex-wrap items-center gap-3">
-        <span className="w-24 shrink-0">Agent</span>
+        <span className="w-24 shrink-0 font-medium">Agent</span>
         <SegmentedControl
           value={settings.agent}
           // Each agent keeps its own model; the core reads it back.
@@ -201,12 +276,97 @@ function CodeThemes() {
         {/* A tiny sample uses its own highlighter so hovering never changes the workspace's shared worker theme. */}
         <File file={themeSample} options={previewOptions} disableWorkerPool />
       </div>
-      <p className={muted}>Hover or focus a theme to preview it. Click to save.</p>
-      <p className={muted}>
-        One Dark matches the reference’s purple, amber and cyan syntax. Code themes follow the app’s
-        light or dark appearance.
-      </p>
+      <p className={helpText}>Hover or focus a theme to preview it. Click to save.</p>
+      <p className={helpText}>Code themes follow the app’s light or dark appearance.</p>
       {(error || theme.isError) && <ErrorText>{error ?? "Couldn't load code theme."}</ErrorText>}
+    </Card>
+  );
+}
+
+function DefaultPromptSettings() {
+  const query = useQuery(core("getDefaultPrompts"));
+  if (query.isError) return <ErrorText>Couldn’t load default prompts.</ErrorText>;
+  if (!query.data) return <Card className={muted}>Loading…</Card>;
+  return (
+    <div className="flex flex-col gap-3">
+      <p className={helpText}>
+        Apply to future updates across all workspaces. Workspace Guide instructions take precedence.
+      </p>
+      {(["guide", "review"] as const).map((name) => (
+        <DefaultPromptEditor
+          key={`${name}:${query.data[name].value}`}
+          name={name}
+          value={query.data[name].value}
+          defaultValue={query.data[name].defaultValue}
+        />
+      ))}
+    </div>
+  );
+}
+
+function DefaultPromptEditor({
+  name,
+  value,
+  defaultValue,
+}: {
+  name: DefaultPromptName;
+  value: string;
+  defaultValue: string;
+}) {
+  const [draft, setDraft] = useState(value);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string>();
+  const title = name === "guide" ? "Guide" : "Review Comment";
+  const save = async (next: string | null) => {
+    if (saving || (next !== null && !next.trim())) return;
+    setSaving(true);
+    setError(undefined);
+    try {
+      await window.coxswain.setDefaultPrompt(name, next);
+      setDraft(next ?? defaultValue);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <Card className="flex flex-col gap-3">
+      <label htmlFor={`default-prompt-${name}`} className="text-[13px] leading-5 font-medium">
+        {title}
+      </label>
+      <p className={helpText}>
+        {name === "guide"
+          ? "Writing instructions for generated Guides."
+          : "Used when turning an agent discussion into a draft PR comment."}
+      </p>
+      <TextArea
+        className="text-[13px] leading-5"
+        id={`default-prompt-${name}`}
+        aria-label={`${title} default prompt`}
+        long
+        rows={8}
+        value={draft}
+        disabled={saving}
+        onSubmit={() => void save(draft)}
+        onChange={(e) => setDraft(e.target.value)}
+      />
+      {error && <ErrorText>{error}</ErrorText>}
+      <div className="flex justify-between gap-3">
+        <Button
+          disabled={saving || (value === defaultValue && draft === defaultValue)}
+          onClick={() => void save(null)}
+        >
+          Restore Default
+        </Button>
+        <Button
+          variant="primary"
+          disabled={saving || !draft.trim() || draft.trim() === value}
+          onClick={() => void save(draft)}
+        >
+          {saving ? "Saving…" : "Save"}
+        </Button>
+      </div>
     </Card>
   );
 }

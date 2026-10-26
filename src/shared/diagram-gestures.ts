@@ -1,4 +1,4 @@
-// Chromium delivers trackpad pinch as ctrl+wheel; ordinary two-axis wheel events pan the board.
+// Command-wheel and Chromium’s ctrl+wheel trackpad pinch zoom; ordinary two-axis wheel events pan the board.
 // Self-contained so native glass and web previews share the same interaction without the app renderer.
 export function installDiagramGestures(viewport: HTMLElement, drawing: HTMLElement) {
   let zoom = 1;
@@ -19,7 +19,7 @@ export function installDiagramGestures(viewport: HTMLElement, drawing: HTMLEleme
   paint();
   const wheel = (event: WheelEvent) => {
     event.preventDefault();
-    if (event.ctrlKey) {
+    if (event.ctrlKey || event.metaKey) {
       const next = Math.min(8, Math.max(0.1, zoom * Math.exp(-event.deltaY * 0.01)));
       const bounds = viewport.getBoundingClientRect();
       const px = event.clientX - bounds.left;

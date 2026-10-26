@@ -6,7 +6,7 @@ export const workspaceChrome = {
   sidebar: 32,
   project: 112,
   newWorkspace: 32,
-  actions: 200,
+  actions: 168,
   gap: 8,
   stripHeight: 32,
   tabMin: 96,

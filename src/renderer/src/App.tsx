@@ -1,3 +1,4 @@
+import { setAgentPane } from "./agent-pane";
 import { fileCountLabel } from "./remaining-files";
 import { createGuideReadingPosition } from "./guide-reading-position";
 import { orderChanges } from "./changes-order";
@@ -21,7 +22,6 @@ import type { View } from "../../core/views";
 import type { Workspace } from "../../core/workspaces";
 import type { GuideOverride } from "../../core/guides";
 import { GuideRunOptions } from "./components/GuideRunOptions";
-import { Activity } from "./Activity";
 import { Agents } from "./Agents";
 import { FindBar } from "./FindBar";
 import { activateFindPane, closeFind, nextFind, openFind } from "./find";
@@ -86,8 +86,18 @@ export function App() {
   const search = useSearch({ from: "__root__" });
   const workspaceLocations = useRef(new Map<number, CanvasSearch>());
   const [screen, setScreen] = useState<
-    "main" | "settings" | "projects" | "projects-add-local" | "projects-create" | "new-workspace"
+    "main" | "projects" | "projects-add-local" | "projects-create" | "new-workspace"
   >("main");
+  const [settingsTabOpen, setSettingsTabOpen] = useState(false);
+  const openAppSettings = () => {
+    setSettingsTabOpen(true);
+    setScreen("main");
+    void navigate({ to: "/", search: (before) => ({ ...before, settings: true }) });
+  };
+  const closeSettings = () => {
+    setSettingsTabOpen(false);
+    void navigate({ to: "/", search: (before) => ({ ...before, settings: undefined }) });
+  };
   const close = () => setScreen("main");
 
   const setup = useQuery(core("checkSetup"));
@@ -145,7 +155,6 @@ export function App() {
     paneOpen && historyOpen && history === t ? setHistoryOpen(false) : showHistory(t);
 
   // ponytail: resets on restart, like the Navigator's settings; store them once there's a settings table.
-  const [activityOpen, setActivityOpen] = useState(false);
   const [viewSettings, setViewSettings] = useState<ViewSettings>({
     diffStyle: "unified",
     showReviewed: true,
@@ -175,7 +184,10 @@ export function App() {
   const tabRequest = useRef(0);
   const selectWorkspace = async (id: number) => {
     const request = ++tabRequest.current;
-    const destination = workspaceLocations.current.get(id) ?? { ws: id };
+    const destination = {
+      ...(workspaceLocations.current.get(id) ?? { ws: id }),
+      settings: undefined,
+    };
     await prepareGuide(id, destination).catch(() => {});
     if (request !== tabRequest.current) return;
     if (closedTabs.has(id)) changeTab(id, true);
@@ -253,6 +265,7 @@ export function App() {
         to: "/",
         search: {
           ...shown.current,
+          settings: undefined,
           thread: undefined,
           pr: undefined,
           section: undefined,
@@ -409,6 +422,12 @@ export function App() {
     enabled: !!currentWorkspace && !!reviewedBase && (!!pr.changed || !!canvasView),
   });
   const reviewed = reviewedQuery.data ?? noPaths;
+  const changedSinceReview =
+    useQuery({
+      ...core("listChangedSinceReview", currentWorkspace?.id ?? 0, reviewedBase ?? "", range?.head),
+      enabled: !!currentWorkspace && !!reviewedBase && (!!pr.changed || !!canvasView),
+    }).data ?? noPaths;
+
   // Keep the live Changes count warm while Guide reads its pinned review range.
   const liveReviewedQuery = useQuery({
     ...core("listReviewed", currentWorkspace?.id ?? 0, mergeBase ?? "", undefined),
@@ -647,6 +666,7 @@ export function App() {
     // Unmount/resize callbacks can arrive after PR overview has replaced the review canvas.
     if (
       s.pr ||
+      search.settings ||
       !scroller.isConnected ||
       !canvas.current?.isConnected ||
       !canvas.current.contains(scroller)
@@ -894,7 +914,7 @@ export function App() {
         (reviewedQuery.data !== undefined || reviewedQuery.isError) &&
         (!canvasView || reviewedFilesQuery.data !== undefined || reviewedFilesQuery.isError);
   useEffect(() => {
-    if (s.pr || !canvasReady || !canvas.current?.isConnected) return;
+    if (search.settings || s.pr || !canvasReady || !canvas.current?.isConnected) return;
     const scroller = canvasScroller(canvas.current);
     if (!scroller) return;
     const observer = new ResizeObserver(() => followGuide(scroller));
@@ -904,10 +924,25 @@ export function App() {
       observer.disconnect();
       clearTimeout(guideTracking.current.timer);
     };
-  }, [canvasReady, currentWorkspace?.id, canvasView?.id, sections?.length, screen, paneKey]);
+  }, [
+    canvasReady,
+    currentWorkspace?.id,
+    canvasView?.id,
+    sections?.length,
+    screen,
+    search.settings,
+    paneKey,
+  ]);
   // Restore only the destination's scroll. Retries from an old navigation must never move a new canvas.
   useLayoutEffect(() => {
-    if (s.pr || !canvasReady || !canvas.current?.isConnected || !currentWorkspace) return;
+    if (
+      search.settings ||
+      s.pr ||
+      !canvasReady ||
+      !canvas.current?.isConnected ||
+      !currentWorkspace
+    )
+      return;
     const switched = scrollWorkspace.current !== currentWorkspace.id;
     const remounted = restoredCanvas.current !== canvas.current;
     restoredCanvas.current = canvas.current;
@@ -980,7 +1015,7 @@ export function App() {
 
   // The action registry (ADR 0027): everything the command palette lists and the native menu runs, by id. Rebuilt each
   // render, so each action's enabled and run see the current state.
-  const onMain = screen === "main" && !!current && palette === null;
+  const onMain = screen === "main" && !search.settings && !!current && palette === null;
   const ready = !!currentWorkspace && !!pr.commits;
   useEffect(() => {
     closeFind(false);
@@ -1041,11 +1076,12 @@ export function App() {
 
     {
       id: "close-workspace-tab",
-      title: "Close Workspace Tab",
+      title: search.settings ? "Close Settings Tab" : "Close Workspace Tab",
       shortcut: "⌘W",
-      enabled: onMain && !!currentWorkspace,
+      enabled: !!search.settings || (onMain && !!currentWorkspace),
       run: () => {
-        if (currentWorkspace) closeWorkspaceTab(currentWorkspace);
+        if (search.settings) closeSettings();
+        else if (currentWorkspace) closeWorkspaceTab(currentWorkspace);
       },
     },
     ...Array.from({ length: 9 }, (_, i): Action => {
@@ -1054,7 +1090,7 @@ export function App() {
         id: `workspace-${i + 1}`,
         title: i === 8 ? "Last Workspace" : `Workspace ${i + 1}`,
         shortcut: `⌘${i + 1}`,
-        enabled: onMain && !!w,
+        enabled: screen === "main" && !!w,
         run: () => {
           if (w) void selectWorkspace(w.id);
         },
@@ -1082,21 +1118,21 @@ export function App() {
       id: "find",
       title: "Find…",
       shortcut: "⌘F",
-      enabled: screen === "main" && !!currentWorkspace,
+      enabled: onMain && !!currentWorkspace,
       run: openFind,
     },
     {
       id: "find-next",
       title: "Find Next",
       shortcut: "⌘G",
-      enabled: screen === "main" && !!currentWorkspace,
+      enabled: onMain && !!currentWorkspace,
       run: () => nextFind(),
     },
     {
       id: "find-previous",
       title: "Find Previous",
       shortcut: "⇧⌘G",
-      enabled: screen === "main" && !!currentWorkspace,
+      enabled: onMain && !!currentWorkspace,
       run: () => nextFind(true),
     },
     {
@@ -1243,7 +1279,7 @@ export function App() {
       run: () => setScreen("projects-add-local"),
     },
     { id: "new-project", title: "New Project…", run: () => setScreen("projects-create") },
-    { id: "settings", title: "Settings…", shortcut: "⌘,", run: () => setScreen("settings") },
+    { id: "settings", title: "Settings…", shortcut: "⌘,", run: () => openAppSettings() },
   ];
   const latestActions = useRef(actions);
   latestActions.current = actions;
@@ -1275,7 +1311,7 @@ export function App() {
   if (!setup.data) return null; // local and quick, like the projects below
   if (setup.data.problems.length)
     return <Setup check={setup.data} onRetry={() => void setup.refetch()} />;
-  if (screen === "settings") return <Settings onClose={close} workspaceId={currentWorkspace?.id} />;
+  if (search.settings && !current) return <Settings onClose={closeSettings} />;
   // Projects and New workspace are dialogs over the screen below them.
   const dialog =
     screen === "projects" || screen === "projects-add-local" || screen === "projects-create" ? (
@@ -1305,7 +1341,7 @@ export function App() {
     return (
       <>
         <Onboarding
-          onSettings={() => setScreen("settings")}
+          onSettings={() => openAppSettings()}
           onChooseProject={() => setScreen("projects")}
         />
         {dialog}
@@ -1323,7 +1359,7 @@ export function App() {
       currentWorkspace?.id ?? null,
     );
     match(result)
-      .with({ kind: "app" }, () => setScreen("settings"))
+      .with({ kind: "app" }, () => openAppSettings())
       .with({ kind: "display" }, ({ settings }) => {
         if (!settings.showReviewed) setReviewReveal(null);
         setViewSettings(settings);
@@ -1375,12 +1411,14 @@ export function App() {
         onSelect={(w) => void selectWorkspace(w.id)}
         onRemove={removeWorkspace}
         onClose={closeWorkspaceTab}
+        settingsOpen={settingsTabOpen || !!search.settings}
+        settingsActive={!!search.settings}
+        onSelectSettings={openAppSettings}
+        onCloseSettings={closeSettings}
         onNew={() => setScreen("new-workspace")}
         agentsOpen={agentsOpen}
         onToggleAgents={() => setAgentsOpen(!agentsOpen)}
         onSettings={() => void openSettings()}
-        onActivity={() => setActivityOpen((open) => !open)}
-        activityOpen={activityOpen}
         paneOpen={paneOpen}
         onTogglePane={() => setPaneOpen((open) => !open)}
         pullRequest={pr.details}
@@ -1388,14 +1426,6 @@ export function App() {
         prOpen={!!s.pr}
       />
 
-      {activityOpen && (
-        <div className="absolute top-[calc(var(--ui-toolbar-height)+12px)] right-3 z-50">
-          <Activity
-            onClose={() => setActivityOpen(false)}
-            onSettings={() => setScreen("settings")}
-          />
-        </div>
-      )}
       {palette !== null && (
         <CommandPalette
           workspaceId={currentWorkspace?.id}
@@ -1405,7 +1435,18 @@ export function App() {
           onClose={() => setPalette(null)}
         />
       )}
-      <div className="flex min-h-0 flex-1">
+      {(settingsTabOpen || search.settings) && (
+        <div
+          className="flex min-h-0 flex-1 pt-[var(--ui-toolbar-height)]"
+          style={!search.settings ? { display: "none" } : undefined}
+        >
+          <Settings embedded onClose={closeSettings} workspaceId={currentWorkspace?.id} />
+        </div>
+      )}
+      <div
+        className="flex min-h-0 flex-1"
+        style={search.settings ? { display: "none" } : undefined}
+      >
         {/* The canvas: what the agent and the human look at together. For now, the workspace's file diffs. */}
         <div
           style={{ minWidth: viewerMin }}
@@ -1495,6 +1536,7 @@ export function App() {
                               options={guideOptions}
                               authors={guideAuthors}
                               changed={diffPr.changed ?? []}
+                              changedSinceReview={changedSinceReview}
                               isReviewed={isReviewed}
                               onOpenFile={(path) => openReviewFile(path, "sections")}
                               onFileReviewedChange={(file, on) =>
@@ -1526,6 +1568,7 @@ export function App() {
                           layout={viewSettings.layout}
                           groupChanges={groupChanges}
                           reviewed={reviewed}
+                          changedSinceReview={changedSinceReview}
                           showReviewed={viewSettings.showReviewed}
                           onShowReviewed={(showReviewed) => {
                             setGuideOptions((options) => ({
@@ -2001,8 +2044,7 @@ function scrollToThread(canvas: HTMLElement, containerId: string, threadId: numb
 }
 
 function GuideProgress({ workspaceId, hasGuide }: { workspaceId: number; hasGuide: boolean }) {
-  const jobs = useQuery(core("listJobs")).data ?? [];
-  const job = jobs.find((item) => item.workspaceId === workspaceId && item.kind === "guide");
+  const job = useQuery(core("getGuideRun", workspaceId)).data;
   if (!job || (job.state !== "running" && job.state !== "failed")) return null;
   const label = match({ state: job.state, hasGuide })
     .with({ state: "running", hasGuide: true }, () => "Updating guide…")
@@ -2013,6 +2055,19 @@ function GuideProgress({ workspaceId, hasGuide }: { workspaceId: number; hasGuid
     <div role="status" className={cn("flex shrink-0 items-center gap-2 px-4 py-2 text-xs", muted)}>
       {job.state === "running" && <SpinnerIcon />}
       <span title={job.error ?? undefined}>{label}</span>
+      {job.sessionId && (
+        <Button
+          variant="link"
+          onClick={async () => {
+            if (!job.sessionId) return;
+            setAgentPane(workspaceId, { picked: job.sessionId, newAgent: null });
+            await window.coxswain.pickAgentSession(job.sessionId);
+            await window.coxswain.setAgentPaneOpen(true);
+          }}
+        >
+          View session
+        </Button>
+      )}
       {job.state === "failed" && (
         <>
           <span className="min-w-0 flex-1 truncate" title={job.error ?? undefined}>
@@ -2040,6 +2095,7 @@ function UpdateGuideDialog({ workspaceId, onClose }: { workspaceId: number; onCl
     setError(undefined);
     try {
       await window.coxswain.regenerateGuide(workspaceId, instructions ?? query.data, override);
+      setAgentPane(workspaceId, { picked: null, newAgent: null });
       onClose();
     } catch (e) {
       setError((e as Error).message);
@@ -2083,7 +2139,8 @@ function UpdateGuideDialog({ workspaceId, onClose }: { workspaceId: number; onCl
               onChange={(value) => setOverride((before) => ({ ...before, ...value }))}
             />
             <p className={cn("mt-3 text-xs", muted)}>
-              Agent, model and effort overrides apply to this update only.
+              Changing the agent starts a new Guide session. Model and effort overrides apply to
+              this update only.
             </p>
           </div>
         )}

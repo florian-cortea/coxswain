@@ -32,7 +32,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           npm pkg set version="$version"
-          git commit -am "Release v$version"
+          if ! git diff --quiet -- package.json; then
+            git add package.json
+            git commit -m "Release v$version"
+          fi
           git tag "v$version"
           git push origin main "v$version"
           echo "tag=v$version" >> "$GITHUB_OUTPUT"
@@ -53,13 +56,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.tag.outputs.tag }}
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
-          cache: pnpm
+          node-version: 26
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.3.4
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
       - run: pnpm exec electron-builder ${{ matrix.args }} --publish never

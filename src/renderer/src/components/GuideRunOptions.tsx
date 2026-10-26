@@ -57,7 +57,7 @@ export function GuideRunOptions(props: {
     <div className="flex flex-col gap-3">
       {props.override && (
         <div className="flex flex-wrap items-center gap-3">
-          <span className="w-24 shrink-0 text-[13px]">Agent</span>
+          <span className="w-24 shrink-0 text-[13px] font-medium">Agent</span>
           <SegmentedControl
             value={agent}
             onChange={(agent) => props.onChange({ agent, model: undefined, effort: undefined })}
@@ -93,7 +93,7 @@ export function GuideRunOptions(props: {
             : !settings || (picks.isFetching && !picks.data);
         return (
           <div key={pick} className="flex flex-wrap items-center gap-3">
-            <span className="w-24 shrink-0 text-[13px]">
+            <span className="w-24 shrink-0 text-[13px] font-medium">
               {pick === "model" ? "Model" : "Effort"}
             </span>
             <Button

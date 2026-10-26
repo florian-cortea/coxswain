@@ -38,6 +38,18 @@ test("board pans beyond its bounds and pinch preserves the point under the point
   assert.equal(drawing.style.transform, "translate(-468px, 500px) scale(1)");
   handlers.get("wheel")!({ ...wheel, ctrlKey: true, deltaY: -Math.log(2) / 0.01 });
   assert.equal(drawing.style.transform, "translate(-1136px, 900px) scale(2)");
+  handlers.get("wheel")!({ ...wheel, metaKey: true, deltaY: Math.log(2) / 0.01 });
+  assert.equal(
+    drawing.style.transform,
+    "translate(-468px, 500px) scale(1)",
+    "Command-wheel zooms out around the pointer instead of panning",
+  );
+  handlers.get("wheel")!({ ...wheel, metaKey: true, deltaY: -Math.log(2) / 0.01 });
+  assert.equal(
+    drawing.style.transform,
+    "translate(-1136px, 900px) scale(2)",
+    "Command-wheel zooms back in around the pointer",
+  );
   handlers.get("pointerdown")!({
     button: 0,
     clientX: 10,

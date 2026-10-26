@@ -3,6 +3,78 @@
 Where the build stands and what we owe. Newest entry first. Terms are defined in
 [the glossary](context/coxswain.md); decisions are in [the ADRs](adr/).
 
+## 2026-10-26 — Release prepared versions
+
+- Final release checks caught an older queued manual Guide request replaying after a newer one; per-workspace request ordering now discards superseded replays before preparation. Repeated session lifecycle regressions verify the latest override wins.
+- CI/release builds now install Node 26 before pinned pnpm 12.3.4. A frozen-install preflight proved pnpm 10 rejects the current patched-dependency lockfile. CI now runs the test suite too.
+- The release workflow skips an empty version-bump commit when main already contains the requested package version, while still tagging and building that version. This supports shipping the prepared 1.8.0 changes through the standard release workflow.
+
+## 2026-10-26 — Durable Guide Chat sessions
+
+- Guide generation now uses the normal right-sidebar Chat session transport, transcript, permissions, queue and Stop controls. A per-workspace binding persists across restarts; automatic updates continue the same conversation, while manual updates select it and open Chat. Guide generation no longer creates background jobs or disposable tool-free agents.
+- The session reads repository evidence directly and uses publish_guide to submit a complete replacement. Coverage/request/snapshot checks protect atomic publication and reject stale requests. The old Guide remains readable while generating; interactive section rewrites are blocked during a requested update.
+- Updates coalesce while a turn is active, preserving latest manual overrides; explicit agent changes bind a replacement conversation. One-turn model/effort choices restore previous session configuration. Progress links to the session and persisted failures support Retry.
+- Deterministic integration coverage exercises same-session refresh/retry/reopen, custom prompts, explicit provider changes, coalescing, stale/partial publication protection and absence of background Guide jobs. Live dev-app validation regenerated #5767 through its visible Chat session and publish_guide using the saved workspace focus, with no new background job. Historical job rows remain readable.
+
+## 2026-10-26 — Command-wheel diagram zoom
+
+- ⌘ + scroll wheel zooms around the pointer in native and fallback diagram modals through the shared gesture handler. Ordinary wheel panning, pinch/Ctrl-wheel zoom and dragging remain covered by the same regression test.
+
+## 2026-10-26 — Changed-since-review dots
+
+- Guide and Changes file labels share a small accessible blue dot for updated/new files, with a Changed since last review tooltip. It remains until Reviewed acknowledges the current contents, including bulk review. Opening alone or further Guide regeneration does not clear it.
+- Core-owned per-file baselines persist in SQLite settings, initialized from the preceding Guide and updated on Reviewed. Prose-only/unrelated base changes add no dots; manual unreview does not resurrect one. Existing stale reviewed fingerprints provide compatibility for updates predating this feature.
+- Regression coverage checks persistence across a reopened database, repeated publication, file additions, review acknowledgements and manual unreview.
+
+## 2026-10-26 — Preserve review across base updates
+
+- Diff review fingerprints now identify each file’s old and new contents rather than the base commit ID. Guide regeneration, reordered sections and unrelated base updates preserve marks; changes to either side invalidate only that file. Whole-file review stays separate.
+- Existing fingerprints remain readable using persisted Guide/job ranges, with old-side content verification before accepting a legacy mark. Explicit unreview clears compatible old marks too. No review rows or migrations are removed. Compatibility is conservative when a historical base is no longer available.
+- A real-git regression covers old/new fingerprint formats, Guide replacement, base movement, per-file invalidation, unchecking, pinned history and whole-file independence. On a database copy, recovered 101 reviewed files for #5769 and 23 additional marks for #5767.
+
+## 2026-10-26 — Remove Activity UI
+
+- Removed the Activity panel and its native/fallback toolbar buttons, spinner, state and styles. The toolbar gives the freed width back to tabs. Background jobs, retries and persisted history remain; Guide progress stays in its sidebar and comment-summary errors no longer point to the removed panel.
+
+## 2026-10-26 — Auto-update menu position
+
+- Auto-update from Remote sits at the bottom of the Settings dropdown, separated from display and Guide controls.
+
+## 2026-10-26 — Consistent Settings naming
+
+- The tab, dropdown entry and close-tab labels all use Settings.
+
+## 2026-10-26 — Settings text hierarchy
+
+- Settings separates page titles (18), section headings (14), field labels/controls/editors (13), and supporting text (12). Section spacing is consistent, helper copy is shorter and width-limited, and prompt editors use a compact eight-row viewport with comfortable line spacing.
+- Settings reuses Guide/Changes sidebar highlight styling and shares dialog input/button radii and focus treatment.
+- Settings uses palette-based surface differences for navigation, canvas, borderless groups and inset prompt fields, removing nested card outlines while retaining clear input focus.
+- Guides distinguishes Generation from Default Prompts; prompt field descriptions explain when each is used. Settings forms and inputs are left-aligned and capped at 80ch rather than stretching across the window.
+
+## 2026-10-26 — App Settings tab
+
+- App Settings opens beside workspace tabs using both the native and fallback top bars. It reuses the normal window chrome, with no extra Settings title bar or Done button. ⌘, selects one tab; its close action and ⌘W return to the retained workspace.
+- Settings is represented in router history. Switching between workspace and Settings tabs preserves Settings drafts and workspace state, with Guide tracking paused while Settings is active. The standalone screen remains available before adding a project.
+
+## 2026-10-26 — Grouped Settings sections
+
+- Settings uses the shared list-row control, selection colours, pane divider and dense left-aligned navigation in an edge-to-edge sidebar. The right pane uses shared cards and controls.
+- Appearance includes Code Theme; Accounts contains GitHub; Guides includes generation defaults and Default Prompts. Section switches still preserve unsaved prompt edits.
+
+## 2026-10-26 — Settings section navigation
+
+- Settings uses a left section list and a right content pane that fills the remaining width, with independent scrolling. Sections stay mounted when switching so unsaved prompt edits survive navigation within Settings.
+
+## 2026-10-26 — Editable default prompts
+
+- App Settings exposes Guide and Review Comment default writing prompts with explicit Save and Restore Default controls. Overrides persist across restarts in SQLite; restoration removes the override so future built-in changes remain available.
+- Automatic/manual Guide generation and agent Guide tools use the same saved Guide default; thread-to-comment generation uses the saved Review Comment default. Workspace Guide instructions still take precedence, and output format stays app-owned.
+
+## 2026-10-26 — Customized automatic Guides
+
+- Workspace Guide instructions explicitly take precedence over default focus, style and section structure in both manual and automatic generation. Lower-priority changes retain file coverage with brief explanations.
+- Regression coverage changes the worktree after saving custom instructions and verifies the automatic job receives them. Model output remains nondeterministic; this verifies prompt delivery and priority, not compliance by every model.
+
 ## 2026-10-26 — Visibility-aware review counts
 
 - Changes tab, category and folder counts share one display rule: reviewed/changed when showing reviewed files, unreviewed only when hiding them. Unknown review data stays unknown, avoiding the loading count flash.

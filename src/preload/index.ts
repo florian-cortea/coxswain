@@ -1,4 +1,5 @@
-import type { GuideSettings, GuideOverride } from "../core/guides";
+import type { DefaultPromptName, DefaultPrompts } from "../core/prompt-settings";
+import type { GuideSettings, GuideOverride, GuideRun } from "../core/guides";
 import { contextBridge, ipcRenderer, webFrame, webUtils } from "electron";
 import type { Appearance, CodeTheme } from "../core/appearance";
 import type { Attachment, AttachmentInput } from "../core/attachments";
@@ -338,6 +339,8 @@ const api = {
     return () => void ipcRenderer.off("review:turn-end", listener);
   },
   // head: a pinned range (a view); without it, the worktree (ADR 0014).
+  listChangedSinceReview: (workspaceId: number, base: string, head?: string): Promise<string[]> =>
+    ipcRenderer.invoke("reviewed:changed", workspaceId, base, head),
   listReviewed: (
     workspaceId: number,
     mergeBase: string,
@@ -381,6 +384,11 @@ const api = {
     instructions?: string,
     override?: GuideOverride,
   ): Promise<void> => ipcRenderer.invoke("guides:regenerate", workspaceId, instructions, override),
+  getDefaultPrompts: (): Promise<DefaultPrompts> => ipcRenderer.invoke("prompts:get"),
+  setDefaultPrompt: (name: DefaultPromptName, value: string | null): Promise<void> =>
+    ipcRenderer.invoke("prompts:set", name, value),
+  getGuideRun: (workspaceId: number): Promise<GuideRun | null> =>
+    ipcRenderer.invoke("guides:run", workspaceId),
   getGuideSettings: (agent?: GuideSettings["agent"]): Promise<GuideSettings> =>
     ipcRenderer.invoke("guides:settings", agent),
   setGuideSettings: (settings: Partial<GuideSettings>): Promise<void> =>

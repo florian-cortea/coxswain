@@ -17,7 +17,8 @@ export type CoreEvent =
         | "view"
         | "reviewed"
         | "github"
-        | "opened";
+        | "opened"
+        | "guide-state";
     }
   | { what: "projects" | "workspaces" | "settings" | "commands" };
 

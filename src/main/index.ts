@@ -1,4 +1,9 @@
 import {
+  getDefaultPrompts,
+  setDefaultPrompt,
+  type DefaultPromptName,
+} from "../core/prompt-settings";
+import {
   app,
   BrowserWindow,
   clipboard,
@@ -130,10 +135,11 @@ import {
   sendReview,
   stopQuestion,
 } from "../core/review";
-import { listReviewed, setReviewed } from "../core/reviewed";
+import { listReviewed, setReviewed, listChangedSinceReview } from "../core/reviewed";
 import { type GuideAuthor } from "../shared/guide-authors";
 import {
   getGuideInstructions,
+  getGuideRun,
   requestGuide,
   getGuideSettings,
   setGuideSettings,
@@ -731,6 +737,9 @@ app.whenReady().then(async () => {
     return !!prompt;
   });
   ipcMain.handle("review:stop", (_, threadId: number) => stopQuestion(db, threadId));
+  ipcMain.handle("reviewed:changed", (_, workspaceId: number, base: string, head?: string) =>
+    listChangedSinceReview(db, workspaceId, base, head),
+  );
   ipcMain.handle(
     "reviewed:list",
     (_, workspaceId: number, mergeBase: string, head?: string, kind?: "diff" | "file") =>
@@ -847,19 +856,7 @@ app.whenReady().then(async () => {
         const display = (settings: ViewSettings) => result.pick({ kind: "display", settings });
         Menu.buildFromTemplate([
           {
-            label: "Auto-update from Remote",
-            type: "checkbox",
-            checked: autoUpdate,
-            enabled: workspaceId !== null,
-            click: async () => {
-              if (workspaceId === null) return;
-              await setAutoUpdate(db, workspaceId, !autoUpdate);
-              await checkGitHub(db, workspaceId);
-              result.pick({ kind: "auto-update", enabled: !autoUpdate });
-            },
-          },
-          {
-            label: "App Settings…",
+            label: "Settings…",
             accelerator: "CmdOrCtrl+,",
             click: () => result.pick({ kind: "app" }),
           },
@@ -931,6 +928,19 @@ app.whenReady().then(async () => {
             label: "Update Guide",
             enabled: canUpdateGuide,
             click: () => result.pick({ kind: "update-guide" }),
+          },
+          { type: "separator" },
+          {
+            label: "Auto-update from Remote",
+            type: "checkbox",
+            checked: autoUpdate,
+            enabled: workspaceId !== null,
+            click: async () => {
+              if (workspaceId === null) return;
+              await setAutoUpdate(db, workspaceId, !autoUpdate);
+              await checkGitHub(db, workspaceId);
+              result.pick({ kind: "auto-update", enabled: !autoUpdate });
+            },
           },
         ]).popup({
           window: BrowserWindow.fromWebContents(e.sender) ?? undefined,
@@ -1200,6 +1210,11 @@ app.whenReady().then(async () => {
   ipcMain.handle("guides:instructions", (_, workspaceId: number) =>
     getGuideInstructions(db, workspaceId),
   );
+  ipcMain.handle("prompts:get", () => getDefaultPrompts(db));
+  ipcMain.handle("prompts:set", (_, name: DefaultPromptName, value: string | null) =>
+    setDefaultPrompt(db, name, value),
+  );
+  ipcMain.handle("guides:run", (_, workspaceId: number) => getGuideRun(db, workspaceId));
   ipcMain.handle("guides:settings", (_, agent?: GuideSettings["agent"]) =>
     getGuideSettings(db, agent),
   );

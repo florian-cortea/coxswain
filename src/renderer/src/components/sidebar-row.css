@@ -58,3 +58,12 @@
 .sidebar-file-label[data-deleted="true"] .sidebar-file-label-name {
   text-decoration: line-through;
 }
+
+.sidebar-file-changed {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--reviewed-color);
+}

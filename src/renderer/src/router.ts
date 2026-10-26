@@ -6,6 +6,7 @@ import { App } from "./App";
 // What the canvas shows, as the location's search (ADR 0025). Each change is a history entry, so View > Back and
 // Forward step through them. Left out: the defaults (the live file diffs, the Navigator on Diffs, no view chosen).
 export type CanvasSearch = {
+  settings?: true; // app Settings tab; the workspace location remains underneath it
   fileTabs?: { path: string; commit?: string }[]; // editor tabs, scoped to this workspace's location
   editorFile?: { path: string; commit?: string }; // last active editor tab when leaving Files
   thread?: number; // a thread to reveal and scroll to, including in a reviewed file

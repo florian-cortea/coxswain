@@ -1,3 +1,4 @@
+import { setDefaultPrompt } from "./prompt-settings.ts";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -92,7 +93,14 @@ test("views without diffs pin files, validate embeds and keep file review separa
   );
   const call = (name: string, args: object) =>
     tools.find((tool) => tool.name === name)!.call(args as never);
+  await setDefaultPrompt(
+    db,
+    "guide",
+    "Explain shared infrastructure first, using detailed sections.",
+  );
   const start = await call("start_guide", { title: "Trace", guide: false });
+  assert.match(start, /Explain shared infrastructure first, using detailed sections/);
+  assert.doesNotMatch(start, /separate Tests section/);
   assert.match(start, /none\. You can still explain existing code/);
   const [view] = await listViews(db, 1);
   assert.equal(view.base, view.head);

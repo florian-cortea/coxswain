@@ -26,6 +26,7 @@ export function Sections(props: {
   options: GuideOptions;
   authors: GuideAuthor[];
   changed: ChangedFile[];
+  changedSinceReview: string[];
   isReviewed: (file: Opened) => boolean;
   onOpenFile: (path: string) => void;
   onFileReviewedChange: (file: Opened, on: boolean) => void;
@@ -151,6 +152,9 @@ export function Sections(props: {
               path={path}
               file={file}
               showFolder={ambiguous}
+              changedSinceReview={
+                opened?.kind !== "file" && props.changedSinceReview.includes(path)
+              }
               reviewed={opened ? props.isReviewed(opened) : false}
               onReviewed={opened ? (on) => props.onFileReviewedChange(opened, on) : undefined}
               onOpen={() => props.onOpenFile(path)}

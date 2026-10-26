@@ -112,22 +112,30 @@ const speaker = (e: Entry) =>
     .with(P.union("note", "question"), () => "Me")
     .exhaustive();
 
-export function summaryPrompt(root: Parameters<typeof describe>[0], thread: Entry[]): string {
+export const defaultReviewPrompt = [
+  `Below is a thread on some code of a pull request: its reviewer ("Me") working with their coding agent ("Agent"). The reviewer now posts one comment on these lines for the pull request's author: a person who has never seen this thread, and for whom the agent doesn't exist. Write it.`,
+  [
+    "The comment carries what the reviewer, after this thread, still has for the author: something to change, a decision, or a question. Find it in the reviewer's own entries, the last ones first: a later entry replaces an earlier one.",
+    "The agent's answers are what the reviewer learned: use them where they settle or sharpen that point (the reason for a request, the concrete change, the case that breaks). The agent's questions and offers to the reviewer are between the two of them; the comment speaks only to the author.",
+    "A change the agent already made in the thread is done: the comment asks for nothing it did, and tells the author what changed only if they need to know, in one sentence.",
+    `Where nothing is left for the author (the reviewer only wanted to understand the code, or the thread settled it), answer ${nothingToSay}.`,
+  ].join("\n"),
+  [
+    "How it reads:",
+    "- In the reviewer's voice, to the author: plain, direct and courteous. Keep the reviewer's own words where they still hold.",
+    "- One paragraph per point, each one to three sentences; most comments are one point.",
+    "- About the code: it names the function, variable or behaviour it means, identifiers in backticks, with a short code suggestion when the thread settled on one.",
+    "- Self-contained: the author sees the comment on these lines and nothing of the thread, so it stands on its own without naming the agent, the discussion, the file or the line numbers.",
+  ].join("\n"),
+].join("\n\n");
+
+export function summaryPrompt(
+  root: Parameters<typeof describe>[0],
+  thread: Entry[],
+  instructions = defaultReviewPrompt,
+): string {
   return [
-    `Below is a thread on some code of a pull request: its reviewer ("Me") working with their coding agent ("Agent"). The reviewer now posts one comment on these lines for the pull request's author: a person who has never seen this thread, and for whom the agent doesn't exist. Write it.`,
-    [
-      "The comment carries what the reviewer, after this thread, still has for the author: something to change, a decision, or a question. Find it in the reviewer's own entries, the last ones first: a later entry replaces an earlier one.",
-      "The agent's answers are what the reviewer learned: use them where they settle or sharpen that point (the reason for a request, the concrete change, the case that breaks). The agent's questions and offers to the reviewer are between the two of them; the comment speaks only to the author.",
-      "A change the agent already made in the thread is done: the comment asks for nothing it did, and tells the author what changed only if they need to know, in one sentence.",
-      `Where nothing is left for the author (the reviewer only wanted to understand the code, or the thread settled it), answer ${nothingToSay}.`,
-    ].join("\n"),
-    [
-      "How it reads:",
-      "- In the reviewer's voice, to the author: plain, direct and courteous. Keep the reviewer's own words where they still hold.",
-      "- One paragraph per point, each one to three sentences; most comments are one point.",
-      "- About the code: it names the function, variable or behaviour it means, identifiers in backticks, with a short code suggestion when the thread settled on one.",
-      "- Self-contained: the author sees the comment on these lines and nothing of the thread, so it stands on its own without naming the agent, the discussion, the file or the line numbers.",
-    ].join("\n"),
+    instructions,
     `The thread, on ${describe(root)}`,
     thread
       .map(

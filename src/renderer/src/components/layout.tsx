@@ -7,11 +7,12 @@ import { SearchIcon, XIcon } from "./icons";
 import { cn, divider, muted, noDrag, titleBar } from "./styles";
 import { ProblemMessage } from "./text";
 
-// A full-window screen (Settings, Projects, New workspace): its title bar, then a centred column.
+// A full-window screen: its title bar, then a padded column or an edge-to-edge pane layout.
 export function Screen(props: {
   title: string;
   onClose: () => void;
   className?: string;
+  edgeToEdge?: boolean;
   children: ReactNode;
 }) {
   return (
@@ -19,7 +20,8 @@ export function Screen(props: {
       <ScreenHeader title={props.title} onClose={props.onClose} />
       <div
         className={cn(
-          "mx-auto flex min-h-0 w-full flex-1 flex-col p-6 lg:p-8 [&>.ui-card]:shrink-0",
+          "mx-auto flex min-h-0 w-full flex-1 flex-col [&>.ui-card]:shrink-0",
+          !props.edgeToEdge && "p-6 lg:p-8",
           props.className,
         )}
       >

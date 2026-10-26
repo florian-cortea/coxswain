@@ -4,7 +4,7 @@ import { getWorkspaceRepo } from "./workspaces.ts";
 
 // ADR 0038: background jobs, the one way coxswain does work nobody waits for. A job is some items of one workspace
 // for the summary agent (a small model, in Settings): it runs them in batches, retries, stores each answer as it
-// comes, and is a row of `jobs`, which Activity shows. What a job is about is its kind's own business (JobSpec):
+// comes, and is persisted as a row of `jobs`. What a job is about is its kind's own business (JobSpec):
 // guides (guides.ts) and agent threads summarized as comments (review-draft.ts). What starts one is in background.ts.
 
 export type SummaryAgent = "claude" | "codex";
@@ -62,7 +62,7 @@ export const setSummaryRunner = (r: SummaryRunner) => void (runner = r);
 // At most parallel runs go at once across all jobs. A run that fails is tried again after retryMs, then 4× that, up to
 // attempts in all; items a run left out are then asked for one at a time.
 export const limits = { parallel: 6, attempts: 3, retryMs: 2000 };
-// How many jobs Activity shows, and how many are kept.
+// How many recent jobs are returned, and how many are kept.
 const listed = 50;
 const kept = 500;
 
@@ -87,8 +87,7 @@ const sleep = (ms: number, signal: AbortSignal) =>
     signal.addEventListener("abort", () => (clearTimeout(timer), resolve()), { once: true });
   });
 
-// The running jobs, with a way to stop each; every job is also a row of jobs, so Activity shows them after a restart
-// too.
+// The running jobs, with a way to stop each; persisted rows retain their history across restarts.
 const live = new Map<number, Job>();
 export const runningJobs = () => [...live.values()];
 // The agent and model of the last run that worked: until one has, a job sends one run first, so a wrong model fails

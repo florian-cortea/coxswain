@@ -1,3 +1,4 @@
+import { getDefaultPrompts } from "./prompt-settings.ts";
 import { match, P } from "ts-pattern";
 import type { Db } from "./db";
 import { emit } from "./events.ts";
@@ -58,7 +59,7 @@ export async function draftReview(db: Db, workspaceId: number): Promise<DraftThr
 }
 
 // An agent thread's Summarize as Comment: the comment it comes to, from the summary model, for the user to edit. A job
-// (ADR 0038) of one item, so it shows in Activity and is retried; the user waits on it.
+// (ADR 0038) of one item, so it is tracked and retried; the user waits on it.
 export async function summarizeThread(db: Db, threadId: number): Promise<string> {
   const thread = await db
     .selectFrom("entries")
@@ -68,6 +69,7 @@ export async function summarizeThread(db: Db, threadId: number): Promise<string>
     .execute();
   const root = thread[0];
   if (!root) throw new Error("The thread is gone");
+  const prompts = await getDefaultPrompts(db);
   let comment: string | null = null;
   const done = new Promise<void>((resolve) =>
     startJob<Row>(db, {
@@ -83,7 +85,9 @@ export async function summarizeThread(db: Db, threadId: number): Promise<string>
         `${e.path ?? "View"}:${linesOf({ ...e, state: "current", shown: true, now: null })}`,
       batches: (items) => [items],
       ask: async (items, ask) => {
-        const text = (await ask(summaryPrompt(root, thread), summaryInstructions, items)).trim();
+        const text = (
+          await ask(summaryPrompt(root, thread, prompts.review.value), summaryInstructions, items)
+        ).trim();
         // "" saves as nothing to say, distinct from no answer, which is asked again.
         return new Map(text ? [[root, text === nothingToSay ? "" : text]] : []);
       },
@@ -92,7 +96,8 @@ export async function summarizeThread(db: Db, threadId: number): Promise<string>
     }).catch(() => resolve()),
   );
   await done;
-  if (comment === null) throw new Error("The summary model wrote nothing; see Activity");
+  if (comment === null)
+    throw new Error("The summary model wrote nothing. Try summarizing the thread again.");
   // "": the thread leaves nothing for the PR's author.
   return comment;
 }

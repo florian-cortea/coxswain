@@ -583,17 +583,6 @@ body {
   opacity: 0.8;
 }
 
-.activity-popover {
-  border-radius: 12px;
-  border: var(--review-border-width) solid var(--review-file-border);
-  background: var(--review-file-bg);
-}
-.activity-job {
-  border-radius: 12px;
-  border: var(--review-border-width) solid var(--review-file-border);
-  background: color-mix(in srgb, var(--review-file-bg), var(--review-canvas-bg) 45%);
-}
-
 /* Prose threads align with their text column; code-line threads retain the card inset. */
 [data-prose-thread] > .review-comment-card {
   margin-inline: 0;
@@ -719,7 +708,8 @@ body {
   background: color-mix(in srgb, var(--review-file-bg), var(--review-canvas-bg) 45%);
 }
 .ui-dialog textarea,
-.ui-dialog .ui-input {
+.ui-dialog .ui-input,
+.settings-shell textarea {
   border-radius: 12px;
   border-color: color-mix(in srgb, var(--review-file-bg), currentColor 20%);
   background: color-mix(in srgb, var(--review-file-bg), var(--review-canvas-bg) 65%);
@@ -727,11 +717,13 @@ body {
   line-height: 1.55;
 }
 .ui-dialog textarea:focus,
-.ui-dialog .ui-input:focus {
+.ui-dialog .ui-input:focus,
+.settings-shell textarea:focus {
   border-color: var(--reviewed-color);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--reviewed-color), transparent 85%);
 }
-.ui-dialog .ui-button:not(.ui-button-ghost) {
+.ui-dialog .ui-button:not(.ui-button-ghost),
+.settings-shell .ui-button:not(.ui-button-ghost) {
   min-height: 32px;
   border-radius: 8px;
   padding-inline: 14px;
@@ -751,4 +743,21 @@ body {
 }
 .ui-review-summary {
   padding: 0 24px 24px;
+}
+
+/* Settings uses surface contrast to group controls; only editable fields need an edge. */
+.settings-shell {
+  background: var(--review-canvas-bg);
+}
+.settings-navigation {
+  background: color-mix(in srgb, var(--review-file-bg) 75%, var(--review-canvas-bg));
+}
+.settings-shell .ui-card {
+  border: 0;
+  background: var(--review-file-bg);
+}
+.settings-shell textarea {
+  border: 0;
+  background: color-mix(in srgb, var(--review-canvas-bg) 65%, var(--review-file-bg));
+  box-shadow: inset 0 0 0 1px var(--review-file-border);
 }

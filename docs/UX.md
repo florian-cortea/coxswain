@@ -17,7 +17,7 @@ The saved Icon Composer design supplies the geometry and glass materials for the
 Canvas-first. The project picker and workspace tabs (L1) run across the top, with New workspace, the agent pane
 toggle and Settings always in reach. Opening a workspace gives the diff or newest guide the primary area (L3).
 The Navigator (L2) opens on the left at 336 points wide; chat (L4) is optional on the right and collapsed by default.
-The main bar has a dedicated PR overview button. Submit Review floats at the main panel’s bottom-right, clear of both sidebars. Activity has its own top-bar icon, which becomes a muted 14-point rotating arc matching the Activity list spinner while any background job is running. Its Activity popover keeps the toolbar active; clicking the Activity icon again closes it. One Settings dropdown holds appearance, display options, App Settings. There is no inner canvas toolbar or bottom bar. Guide is the first/default Navigator tab, with threads nested below their sections in one scrolling list. The right sidebar holds Chat without a standalone header;
+The main bar has a dedicated PR overview button. Submit Review floats at the main panel’s bottom-right, clear of both sidebars. One Settings dropdown holds appearance, display options, Settings. There is no inner canvas toolbar or bottom bar. Guide is the first/default Navigator tab, with threads nested below their sections in one scrolling list. The right sidebar holds Chat without a standalone header;
 Submit Review floats at bottom-right.
 
 ```text
@@ -106,9 +106,9 @@ another file do not change the search scope.
 
 Changes in list mode uses a 16-point left inset so top-level filenames have breathing room beside the sidebar edge.
 
-## Activity
+## Background jobs
 
-Activity has a dedicated top-bar icon, replaced by a 14-point rotating arc while background jobs run, matching the Activity list’s thin rounded stroke and one-second rotation (drawn in SwiftUI in the native toolbar). Clicking opens a compact 420-point popover below the toolbar. It lists Guide generation and comment-summary jobs in 12-point rounded cards with hairline borders, muted model/time metadata, progress only for running/failed jobs, and Stop while running. Its compact header shows the running count, Settings and Close. It closes on Escape or clicking outside. File-summary coverage and work-ahead controls are gone.
+Comment-summary jobs continue without an Activity panel or toolbar item and report their result or error in the requesting thread. Guide generation uses its durable Chat session and reports progress in the Guide sidebar.
 
 Settings starts with _Appearance_: a _System_ · _Light_ · _Dark_ · _Soft Dark_ segmented control. The choice applies
 immediately to the whole app and is kept across restarts; _System_ is the default. Soft Dark uses the
@@ -152,8 +152,8 @@ _Check again_; nothing else shows until all are there. Then, with no project yet
   The GitHub mark opens the PR externally. Preview opens the single live environment directly, or a native environment menu
   when several are available. Both slots remain in place, disabled when unavailable, to keep the tabs steady.
   The agent pane has no duplicate hide toggle; the main bar controls its visibility.
-  The PR overview has its own toolbar button. Submit Review floats at the main panel’s bottom-right with compact padding and the pending-thread count. The old Review menu is removed; closed workspaces reopen through the command palette. Range selection belongs to the Changes Commits/Turns pane. Activity has its own icon. The adjacent
-  Settings dropdown groups appearance, code theme, diff layout and App Settings. File sidebar layout options live only in its dots menu.
+  The PR overview has its own toolbar button. Submit Review floats at the main panel’s bottom-right with compact padding and the pending-thread count. The old Review menu is removed; closed workspaces reopen through the command palette. Range selection belongs to the Changes Commits/Turns pane. The adjacent
+  Settings dropdown groups appearance, code theme, diff layout and Settings. File sidebar layout options live only in its dots menu.
   macOS owns selection and focus feedback. The active workspace has a glass capsule in the shared strip;
   the project picker and right-side actions have matching 32 px capsules. Minimum widths keep controls
   legible; when workspaces overflow, the active one stays visible; the command palette can switch to any workspace.
@@ -363,7 +363,7 @@ _Check again_; nothing else shows until all are there. Then, with no project yet
   _Assign yourself_, _Labels_. The Commits pane shows
   each pushed commit's checks as a dot before its sha.
 
-  **Guide.** Each workspace has one Guide, generated on opening and updated in place as changes move. Guide in the sidebar opens it; Changes shows the raw diff, and Files browses the worktree. The Guide dots menu’s Update Guide opens a dialog with optional focus/style instructions and Cancel / Update Guide. Instructions are remembered for that workspace and reused for automatic updates; blank text restores the standard concise Guide. Existing content remains readable during generation, and progress appears in the Guide sidebar and Activity. There is no saved View list, New View action or saved prompt library.
+  **Guide.** Each workspace has one Guide and a durable Guide Chat session, generated on opening and updated in place as changes move. Guide in the sidebar opens it; Changes shows the raw diff, and Files browses the worktree. The Guide dots menu’s Update Guide opens a dialog with optional focus/style instructions and Cancel / Update Guide. Instructions are remembered for that workspace and reused for automatic updates, taking precedence over the default focus, style and section structure while retaining complete file coverage; blank text restores the standard concise Guide. Existing content remains readable during generation, and progress appears in the Guide sidebar. There is no saved View list, New View action or saved prompt library.
 
   The view shows its sections in order, each with its heading, how many file
   diffs it embeds and a _Reviewed_ checkbox that marks them all (ticked once all are; unticking unmarks them all), then its markdown (ADR 0026): prose, tables, mermaid diagrams, and embedded file diffs, which work
@@ -483,7 +483,7 @@ Returning to Guide restores its saved scroll and highlighted file/section immedi
 
 ## Automatic guides
 
-Opening a workspace starts a background Guide job unless a complete guide already matches its merge-base/snapshot range. PR/worktree changes trigger a replacement. Jobs use the configured background agent/model, appear in Activity, and coalesce duplicate checks. A superseded run cannot replace a newer guide. The previous guide remains readable on opening too, even when its snapshot is stale, until a complete replacement is ready; Changes/Files are not interrupted by publication.
+Opening a workspace sends a generation turn to its Guide Chat session unless a complete Guide already matches its merge-base/snapshot range. PR/worktree changes trigger a replacement. Guide turns use their saved sidebar session and configured model/effort, report progress in the Guide sidebar, and coalesce duplicate checks. A superseded run cannot replace a newer guide. The previous guide remains readable on opening too, even when its snapshot is stale, until a complete replacement is ready; Changes/Files are not interrupted by publication.
 
 The Guide sidebar shows Generating guide… or Updating guide… above its list. Failures show their reason and Retry. Progress is indeterminate during the model run; the app does not invent a percentage. Plain guides use short thematic headings and one or two concise sentences alongside embedded diffs, without code snippets or a review report.
 
@@ -574,7 +574,7 @@ Submit Review always shows Comment, Approve and Request Changes. On the viewer�
 
 Opening PR overview preserves the Guide sidebar’s reading highlight and scroll position. Guide tracking and automatic sidebar reveal pause until the review canvas returns; delayed resize/scroll callbacks from its removed canvas are ignored.
 
-Update Guide includes Model and Effort pickers with App default and Agent default choices. Changing the model resets effort to the agent default, and supported effort choices are discovered for that model. These overrides apply only to the requested update; focus/style instructions still persist. Settings → Guides stores model and effort defaults per agent. Model discovery uses a temporary session without changing Chat selections.
+Update Guide includes Model and Effort pickers with App default and Agent default choices. Changing the model resets effort to the agent default, and supported effort choices are discovered for that model. Model/effort overrides apply only to the requested update; an explicit agent change starts a replacement Guide session; focus/style instructions still persist. Settings → Guides stores model and effort defaults per agent. Model discovery uses a temporary session without changing Chat selections.
 
 Model menus remain usable while model-specific effort choices load. Discovery results are reused for five minutes, and temporary-session teardown does not delay showing the choices.
 
@@ -596,7 +596,7 @@ Changes category diff totals align to the same right edge as file diff totals, j
 
 Sidebar ⋯ menus contain only sidebar filters, grouping and Tree/List controls. The top Settings dropdown contains canvas display controls, Section Descriptions, Hide Reviewed Files and Update Guide. Sidebar review filters do not change canvas visibility.
 
-The top Settings dropdown includes Auto-update from Remote for the current workspace, checked by default. It persists across restarts, follows force-pushes for clean workspaces, and switches off automatically on local edits, untracked files or unpushed commits. It stays off until explicitly re-enabled; enabling it with local work immediately switches it off again. Other workspaces are unaffected.
+The bottom of the top Settings dropdown includes Auto-update from Remote for the current workspace, checked by default. It persists across restarts, follows force-pushes for clean workspaces, and switches off automatically on local edits, untracked files or unpushed commits. It stays off until explicitly re-enabled; enabling it with local work immediately switches it off again. Other workspaces are unaffected.
 
 Hide Reviewed Files removes all reviewed cards, including the previously selected card when the option is enabled. Selecting a reviewed file in the sidebar temporarily reveals only that card while keeping the option enabled. Selecting another file or marking the revealed card Reviewed again clears the exception.
 
@@ -631,3 +631,25 @@ Update Guide in the top Settings dropdown is enabled whenever a workspace is ope
 Changes tree folders show visibility-aware review counts beside their names, matching category counts and including filtered or collapsed descendants within the folder’s category. Counts retain the same muted style and 1 px optical alignment.
 
 Changes tab, category and folder counts follow sidebar visibility: when reviewed files are shown, display reviewed/changed (for example 5/12); when hidden, display only unreviewed files (7). Counts use all changed descendants in scope, including collapsed or thread-filtered files.
+
+Settings → Guides → Default Prompts provides multiline Guide and Review Comment editors, each with Save and Restore Default. Saved prompts apply across workspaces to future generation, including automatic Guide regeneration and agent-authored Guides. Workspace Guide instructions retain precedence. Existing Guides and comments remain unchanged until updated. Output-format requirements remain app-owned.
+
+Settings uses two columns below the shared window header: an edge-to-edge left sidebar uses the app’s shared list rows and selection styling for Appearance, Accounts, Guides and About. The selected section fills the remaining right-hand width and scrolls independently. Appearance includes colour mode and Code Theme; Accounts contains GitHub; Guides contains agent/model/effort and Default Prompts. Content uses the shared cards, controls, spacing and muted text. Switching sections preserves unsaved prompt edits until Settings closes.
+
+Settings opens as a closable Settings tab alongside workspace tabs in the normal top bar, retaining the project switcher and shared window controls. There is no separate Settings header or Done button in this tab. Selecting a workspace returns to its retained canvas; the Settings tab stays open with unsaved edits preserved. Closing it (including ⌘W while selected) returns to the workspace. ⌘, and Settings in the top dropdown open or select the single tab. Back/Forward include Settings via the router location. With no project, Settings remains accessible as a standalone screen.
+
+Settings typography uses an 18-point semibold page title, 14-point semibold section headings, 13-point field labels and controls, and 12-point muted helper text with a bounded reading width. Prompt editors use 13-point text with 20-point line spacing; concise helper copy sits below labels rather than competing with section headings.
+
+Settings forms stay left-aligned in the right pane and are capped at 80ch, so cards, descriptions and prompt inputs retain readable line lengths on wide windows while shrinking for smaller ones.
+
+Settings groups controls with surface contrast rather than nested outlines: a canvas background, a subtly distinct navigation surface, raised borderless cards, and inset prompt fields with a single subtle edge and visible focus ring. Surfaces use the app’s existing light/dark palette tokens.
+
+Settings navigation reuses the same 12-point sidebar row corners and hover/selection washes as Guide and Changes. Cards retain the shared 12-point radius; prompt fields use the dialog field radius and focus glow, and action buttons share the dialog button metrics and 8-point corners.
+
+Guide regeneration preserves Reviewed marks per file when both old and new contents match the last reviewed state. Reordered sections, new snapshot IDs and unrelated base-branch changes leave marks intact. Existing marks from earlier app versions are matched against saved Guide/job ranges; only a changed file becomes unreviewed. Whole-file marks remain independent of diff marks.
+
+Guide and Changes sidebar file rows show a small blue dot with the tooltip “Changed since last review” when a Guide update changes that file’s old or new contents, including newly added files. A persistent per-file baseline keeps the dot through later updates and app restarts. Reviewing the file (including section/folder review) acknowledges its current contents and clears the dot. Opening alone does not clear it; manually unchecking Reviewed does not create a new dot. First-time Guide generation and prose-only regeneration show no dots. Existing unreviewed changes with saved prior review marks get the same indicator.
+
+Expanded diagrams support ⌘ + scroll wheel to zoom around the pointer in both native and fallback modals. Trackpad pinch / Ctrl-wheel keeps the same zoom behavior; ordinary scrolling pans the diagram.
+
+Guide generation lives in a named Guide session in the right Chat sidebar, with normal streamed history, tool activity, permissions, queued messages and Stop. Manual Update Guide opens/selects that session; automatic updates reuse it across restarts without switching away from a different conversation. Guide progress offers View session and Retry. A complete validated replacement publishes at once; the previous Guide remains readable during the turn. New requests coalesce into a follow-up instead of interrupting an active conversation.

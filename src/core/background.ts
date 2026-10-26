@@ -30,6 +30,7 @@ export function startBackground(db: Db) {
             "projects",
             "workspaces",
             "commands",
+            "guide-state",
           ),
         },
         () => {},
