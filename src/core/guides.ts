@@ -118,7 +118,6 @@ async function saveRun(db: Db, workspaceId: number, run: GuideRun) {
 type GuideSession = { agentSessionId: string; agent: Agent };
 type GuideSessionDriver = {
   create: (db: Db, workspaceId: number, settings: GuideSettings) => Promise<GuideSession>;
-  focus: (db: Db, sessionId: string) => Promise<void>;
   run: (
     db: Db,
     sessionId: string,
@@ -143,11 +142,6 @@ const defaultDriver: GuideSessionDriver = {
       onStart,
       picks: { model: settings.model, effort: settings.effort },
     });
-  },
-  focus: async (db, id) => {
-    const { pickAgentSession, setAgentPaneOpen } = await import("./agents.ts");
-    await pickAgentSession(db, id);
-    await setAgentPaneOpen(db, true);
   },
 };
 let driver = defaultDriver;
@@ -194,9 +188,6 @@ export async function requestGuide(
       .execute();
   }
   emit({ workspaceId, what: "guide", override });
-  const session = await savedGuideSession(db, workspaceId);
-  if (session && (!override?.agent || session.agent === override.agent))
-    await driver.focus(db, session.agentSessionId);
 }
 
 export type GuideSection = { title: string; body: string; files: string[] };
@@ -346,9 +337,6 @@ async function prepare(
     }
     request.sessionId = session.agentSessionId;
     await saveRun(db, workspaceId, request);
-    if (force) {
-      await driver.focus(db, session.agentSessionId);
-    }
     const [instructions, prompts] = await Promise.all([
       getGuideInstructions(db, workspaceId),
       getDefaultPrompts(db),

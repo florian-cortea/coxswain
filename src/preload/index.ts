@@ -374,6 +374,9 @@ const api = {
   getCodeTheme: (): Promise<CodeTheme> => ipcRenderer.invoke("settings:code-theme"),
   setCodeTheme: (value: CodeTheme): Promise<void> =>
     ipcRenderer.invoke("settings:set-code-theme", value),
+  getSoftDark: (): Promise<boolean> => ipcRenderer.invoke("settings:soft-dark"),
+  setSoftDark: (enabled: boolean): Promise<void> =>
+    ipcRenderer.invoke("settings:set-soft-dark", enabled),
   getAppearance: (): Promise<Appearance> => ipcRenderer.invoke("settings:appearance"),
   setAppearance: (value: Appearance): Promise<void> =>
     ipcRenderer.invoke("settings:set-appearance", value),

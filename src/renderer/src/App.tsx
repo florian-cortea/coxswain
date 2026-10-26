@@ -2092,7 +2092,6 @@ function UpdateGuideDialog({ workspaceId, onClose }: { workspaceId: number; onCl
     setError(undefined);
     try {
       await window.coxswain.regenerateGuide(workspaceId, instructions ?? query.data, override);
-      setAgentPane(workspaceId, { picked: null, newAgent: null });
       onClose();
     } catch (e) {
       setError((e as Error).message);

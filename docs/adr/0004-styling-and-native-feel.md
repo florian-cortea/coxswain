@@ -38,10 +38,11 @@ slightly wrong.
   implementation of the effects. Regeneration reads the saved document without editing it.
 - **Follow the system:** the system font (`system-ui`), the user's accent colour from
   `systemPreferences.getAccentColor()` as a CSS variable, and reduced-motion and high-contrast settings.
-  Light and dark mode default to the system, with a saved _System_ / _Light_ / _Dark_ / _Soft Dark_ choice in Settings.
+  Light and dark mode default to the system, with a saved _System_ / _Light_ / _Dark_ choice plus an independent _Soft Dark_ preference in Settings.
   The core stores the choice in SQLite; the main process applies it through `nativeTheme.themeSource`
-  before opening a window and on changes. Soft Dark maps to native dark controls while a shared CSS
-  neutral ramp applies its lighter charcoal palette throughout the UI. `prefers-color-scheme` keeps CSS, Pierre code colours and
+  before opening a window and on changes. Soft Dark does not override native theme selection: a shared CSS
+  neutral ramp applies its lighter charcoal palette only while the effective mode is dark, including System.
+  Both preferences persist separately; legacy Soft Dark selections retain Dark plus Soft Dark without a schema migration. `prefers-color-scheme` keeps CSS, Pierre code colours and
   diagrams in step, along with native controls.
 - **Components: shadcn/ui with Tailwind.** shadcn/ui copies its components (built on Radix) into
   our repository, so we own and restyle them. Until it's set up, `src/renderer/src/components/`

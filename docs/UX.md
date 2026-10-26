@@ -17,7 +17,7 @@ The saved Icon Composer design supplies the geometry and glass materials for the
 Canvas-first. The project picker and workspace tabs (L1) run across the top, with New workspace, the agent pane
 toggle and Settings always in reach. Opening a workspace gives the diff or newest guide the primary area (L3).
 The Navigator (L2) opens on the left at 336 points wide; chat (L4) is optional on the right and collapsed by default.
-The main bar has a dedicated PR overview button. Submit Review floats at the main panel’s bottom-right, clear of both sidebars. One Settings dropdown holds appearance, display options, Settings. There is no inner canvas toolbar or bottom bar. Guide is the first/default Navigator tab, with threads nested below their sections in one scrolling list. The right sidebar holds Chat without a standalone header;
+The main bar has a dedicated PR overview button. Submit Review floats at the main panel’s bottom-right, clear of both sidebars. One Settings dropdown holds display options and Settings. There is no inner canvas toolbar or bottom bar. Guide is the first/default Navigator tab, with threads nested below their sections in one scrolling list. The right sidebar holds Chat without a standalone header;
 Submit Review floats at bottom-right.
 
 ```text
@@ -110,9 +110,9 @@ Changes in list mode uses a 16-point left inset so top-level filenames have brea
 
 Comment-summary jobs continue without an Activity panel or toolbar item and report their result or error in the requesting thread. Guide generation uses its durable Chat session and reports progress in the Guide sidebar.
 
-Settings starts with _Appearance_: a _System_ · _Light_ · _Dark_ · _Soft Dark_ segmented control. The choice applies
+Settings starts with _Appearance_: a _System_ · _Light_ · _Dark_ segmented control and an independent _Soft Dark_ checkbox. The choice applies
 immediately to the whole app and is kept across restarts; _System_ is the default. Soft Dark uses the
-reference’s #1f2023 canvas, #28292c cards, muted dividers and #2a332f/#392d30 diff fills.
+reference’s #1f2023 canvas, #28292c cards, muted dividers and #2a332f/#392d30 diff fills whenever the effective mode is dark, including when System follows a dark OS. Light mode ignores this palette preference without clearing it. Soft Dark is configured in Settings → Appearance alongside colour mode and Code Theme. Existing saved Soft Dark selections retain dark mode with the independent preference enabled.
 A separate saved Code Theme selects Default (Pierre), One Dark (reference-like syntax), GitHub or Catppuccin.
 Each theme provides light/dark variants; file-card surfaces still follow Appearance. A Python sample below
 the picker previews hovered or keyboard-focused options without saving; leaving restores the saved choice. Both settings are also
@@ -120,7 +120,7 @@ available in the top Settings menu.
 
 ```text
 Settings
-  Appearance     [ System | Light | Dark | Soft Dark ]
+  Appearance     [ System | Light | Dark ]  [✓] Soft Dark
   Code Theme     [ Default | One Dark | GitHub | Catppuccin ]
   GitHub account
   Guides         [ Agent ] [ Model ] [ Effort ]
@@ -153,7 +153,7 @@ _Check again_; nothing else shows until all are there. Then, with no project yet
   when several are available. Both slots remain in place, disabled when unavailable, to keep the tabs steady.
   The agent pane has no duplicate hide toggle; the main bar controls its visibility.
   The PR overview has its own toolbar button. Submit Review floats at the main panel’s bottom-right with compact padding and the pending-thread count. The old Review menu is removed; closed workspaces reopen through the command palette. Range selection belongs to the Changes Commits/Turns pane. The adjacent
-  Settings dropdown groups appearance, code theme, diff layout and Settings. File sidebar layout options live only in its dots menu.
+  Settings dropdown groups canvas display options and Settings. Appearance, Soft Dark and Code Theme live in Settings → Appearance. File sidebar layout options live only in its dots menu.
   macOS owns selection and focus feedback. The active workspace has a glass capsule in the shared strip;
   the project picker and right-side actions have matching 32 px capsules. Minimum widths keep controls
   legible; when workspaces overflow, the active one stays visible; the command palette can switch to any workspace.
@@ -518,8 +518,10 @@ the same neutral hover/selection washes, 12-point corners and 3-point vertical h
 File rows share 12-point filenames, 11-point folder/count metadata, 14-point language icons
 and 28-point row height.
 
-Sidebar filename/icon status colors blend 80% theme color with 20% label gray for a softer
-palette while retaining status differences and full text opacity.
+In light mode, sidebar filenames, icons and addition/deletion counts use green #168c28
+and red #cf3a42 sampled from the supplied Linear screenshot, with medium blue #356fba
+for modifications. These are screenshot samples and a companion blue, not official tokens. Dark mode retains the selected
+code theme’s status palette and its 80% color/20% label-gray blend.
 
 Guide, Changes and Files share the SidebarFileLabel component and sidebar-row stylesheet.
 Folder chains and filenames use transparent, native ellipsis labels rather than painted
@@ -652,4 +654,20 @@ Guide and Changes sidebar file rows show a small blue dot with the tooltip “Ch
 
 Expanded diagrams support ⌘ + scroll wheel to zoom around the pointer in both native and fallback modals. Trackpad pinch / Ctrl-wheel keeps the same zoom behavior; ordinary scrolling pans the diagram.
 
-Guide generation lives in a named Guide session in the right Chat sidebar, with normal streamed history, tool activity, permissions, queued messages and Stop. Manual Update Guide opens/selects that session; automatic updates reuse it across restarts without switching away from a different conversation. Guide progress offers View session and Retry. A complete validated replacement publishes at once; the previous Guide remains readable during the turn. New requests coalesce into a follow-up instead of interrupting an active conversation.
+Guide generation lives in a named Guide session in the right Chat sidebar, with normal streamed history, tool activity, permissions, queued messages and Stop. Manual Update Guide, automatic updates and retries reuse that session across restarts without opening Chat or switching away from the selected conversation. Guide progress offers View session, which explicitly opens/selects the session, and Retry. A complete validated replacement publishes at once; the previous Guide remains readable during the turn. New requests coalesce into a follow-up instead of interrupting an active conversation.
+
+Settings → Appearance offers twelve code themes in a dropdown to the right of its preview showing the saved
+selection immediately on load. Hover and keyboard focus preview without saving; dismissing
+restores the saved theme. The menu stays beside the sample. Choosing a theme saves it for files, diffs and trees and
+updates the sample below. Each theme has paired light and dark variants.
+
+The Claude Code/Codex agent picker uses the same anchored dropdown as the code theme
+picker, showing the saved selection and highlighting it in the menu. Settings and
+Guide update options use the same control.
+
+The top bar’s PR overview toggle is labeled “PR” in semibold and sits first in the action group,
+to the left of GitHub and preview actions, in both native and standard chrome.
+
+Code theme families always contain light and dark variants. Code views and the Settings
+preview explicitly follow the resolved app appearance, including OS changes in System
+mode; Soft Dark uses the dark variant. Changing appearance preserves the theme family.

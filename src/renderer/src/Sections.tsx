@@ -206,14 +206,14 @@ export function Sections(props: {
                   {section.files.length > 0 ? (
                     <span className={cn("flex items-center gap-2 text-[11px] opacity-80", muted)}>
                       <span>{count(section.files.length, "file")}</span>
-                      <span className="text-green-600 dark:text-green-400">
+                      <span className="text-[var(--sidebar-added-light)] dark:text-green-400">
                         +
                         {section.files.reduce(
                           (n, f) => n + (f.kind === "diff" ? f.file.additions : 0),
                           0,
                         )}
                       </span>
-                      <span className="text-red-600 dark:text-red-400">
+                      <span className="text-[var(--sidebar-deleted-light)] dark:text-red-400">
                         −
                         {section.files.reduce(
                           (n, f) => n + (f.kind === "diff" ? f.file.deletions : 0),

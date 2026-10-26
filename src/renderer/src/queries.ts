@@ -31,6 +31,7 @@ type Extra = { staleTime?: number; refetchOnWindowFocus?: boolean };
 const extra: Partial<Record<Reads, Extra>> = {
   // These reads have explicit core events. Remounting an observer is not a reason to repeat local work.
   getAppearance: { staleTime: Infinity },
+  getSoftDark: { staleTime: Infinity },
   getCodeTheme: { staleTime: Infinity },
   getGuideSettings: { staleTime: Infinity },
   getGuideRun: { staleTime: Infinity },
@@ -144,6 +145,7 @@ const affects: Record<Changed["what"], Reads[]> = {
   commands: ["agentCommands"],
   settings: [
     "getAppearance",
+    "getSoftDark",
     "getCodeTheme",
     "getGuideSettings",
     "getDefaultPrompts",

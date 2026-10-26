@@ -14,6 +14,10 @@
     color-mix(in srgb, var(--review-canvas-bg), black 24%),
     var(--review-file-border)
   );
+  /* Green/red sampled from the supplied Linear screenshot; blue remains a companion shade. */
+  --sidebar-added-light: #168c28;
+  --sidebar-modified-light: #356fba;
+  --sidebar-deleted-light: #cf3a42;
   --guide-file-status-strength: 80%;
   --guide-file-font-size: 0.75rem;
   --guide-selected-bg: light-dark(rgb(0 0 0 / 5%), rgb(255 255 255 / 5%));
@@ -81,6 +85,13 @@ body {
     background: var(--color-neutral-900);
     color: var(--color-neutral-100);
   }
+}
+
+:root[data-appearance="light"] {
+  color-scheme: light;
+}
+:root[data-appearance="dark"] {
+  color-scheme: dark;
 }
 
 /* Soft Dark samples the reference's charcoal canvas, cards, text and dividers.
@@ -760,4 +771,29 @@ body {
   border: 0;
   background: color-mix(in srgb, var(--review-canvas-bg) 65%, var(--review-file-bg));
   box-shadow: inset 0 0 0 1px var(--review-file-border);
+}
+
+/* Keep the live theme preview clear of its open dropdown. */
+.code-theme-card .code-theme-picker {
+  order: 2;
+}
+.code-theme-card .code-theme-preview {
+  order: 1;
+  flex-basis: 20rem;
+}
+.code-theme-card > p {
+  order: 3;
+}
+.preview-select-menu {
+  position: fixed;
+  inset: auto;
+  top: anchor(bottom);
+  left: anchor(left);
+  width: anchor-size(width);
+  margin: 4px 0 0;
+  max-height: min(28rem, 70vh);
+  overflow-y: auto;
+  color: inherit;
+  background: light-dark(#fff, #29292c);
+  border: 1px solid light-dark(#ddd, #454548);
 }

@@ -120,7 +120,6 @@ test("Guide generation uses one durable chat session, coalesces updates and publ
   let fail = false;
   let gate: Promise<void> | undefined;
   setGuideSessionDriver({
-    focus: async () => {},
     create: async (database, workspaceId, settings) => {
       const id = `guide-session-${++created}`;
       await database
@@ -157,6 +156,7 @@ test("Guide generation uses one durable chat session, coalesces updates and publ
     },
   });
   await setGuideSettings(db, { agent: "codex", model: "test-guide-model", effort: "medium" });
+  await db.insertInto("settings").values({ key: "agent-pane.open", value: "false" }).execute();
   const stop = startBackground(db);
   t.after(stop);
   emit({ workspaceId: 1, what: "opened" });
@@ -179,6 +179,18 @@ test("Guide generation uses one durable chat session, coalesces updates and publ
   assert.match(turns.at(-1)!.prompt, /Focus on architecture and data flow/);
   assert.match(turns.at(-1)!.prompt, /take precedence/);
   assert.equal(turns.at(-1)!.model, "manual-model");
+  assert.equal(
+    (
+      await db
+        .selectFrom("settings")
+        .select("value")
+        .where("key", "=", "agent-pane.open")
+        .executeTakeFirst()
+    )?.value,
+    "false",
+    "a manual Guide update keeps Chat closed",
+  );
+
   writeFileSync(join(worktree, "a.ts"), "export const value = 3;\n");
   await ensureGuide(db, 1);
   await idle(db);
@@ -218,6 +230,17 @@ test("Guide generation uses one durable chat session, coalesces updates and publ
   await idle(db);
   assert.equal((await getGuideRun(db, 1))?.state, "done");
   assert.equal(created, 1, "retry uses the same conversation");
+  assert.equal(
+    (
+      await db
+        .selectFrom("settings")
+        .select("value")
+        .where("key", "=", "agent-pane.open")
+        .executeTakeFirst()
+    )?.value,
+    "false",
+    "automatic updates and retries keep Chat closed",
+  );
 
   let release!: () => void;
   gate = new Promise((resolve) => {

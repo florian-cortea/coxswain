@@ -240,6 +240,16 @@ export function WorkspaceTabs({
           </Button>
         </div>
         <div className={cn("workspace-actions flex shrink-0 items-center gap-1 p-1", noDrag)}>
+          <ToggleButton
+            on={prOpen}
+            title="Open pull request overview"
+            aria-label="Open pull request overview"
+            className="min-w-7 text-xs font-semibold"
+            disabled={!pullRequest}
+            onClick={onShowPr}
+          >
+            PR
+          </ToggleButton>
           <Button
             variant="ghost"
             title="Open pull request on GitHub"
@@ -260,17 +270,6 @@ export function WorkspaceTabs({
           >
             <GlobeIcon />
           </Button>
-          <ToggleButton
-            icon
-            on={prOpen}
-            title="Open pull request overview"
-            aria-label="Open pull request overview"
-            className="size-7 p-1"
-            disabled={!pullRequest}
-            onClick={onShowPr}
-          >
-            <GitPullRequestIcon />
-          </ToggleButton>
           <Button
             variant="ghost"
             title="Settings"
@@ -314,10 +313,7 @@ function NativeWorkspaceBar(
     },
     () => matchMedia("(prefers-color-scheme: dark)").matches,
   );
-  const dark =
-    appearance === "dark" ||
-    appearance === "soft-dark" ||
-    ((!appearance || appearance === "system") && systemDark);
+  const dark = appearance === "dark" || ((!appearance || appearance === "system") && systemDark);
   const native = useNativeControls();
   const occluded = useNativeOcclusion();
   const host = useRef<HTMLDivElement>(null);
@@ -464,6 +460,11 @@ function NativeWorkspaceBar(
     },
     [
       {
+        ...iconButton("pr-overview", "doc.text", "Open pull request overview", props.prOpen),
+        label: ui.text("PR", { font: { size: 12, weight: "semibold" } }),
+        disabled: occluded || !props.pullRequest,
+      },
+      {
         ...iconButton("open-github", "arrow.up.right.square", "Open on GitHub"),
         label: ui.shape(
           { type: "path", d: githubMark, viewBox: [16, 16] },
@@ -492,10 +493,6 @@ function NativeWorkspaceBar(
               disabled: occluded || !props.pullRequest?.deployments.length,
             },
           ]),
-      {
-        ...iconButton("pr-overview", "doc.text", "Open pull request overview", props.prOpen),
-        disabled: occluded || !props.pullRequest,
-      },
       iconButton("settings", "slider.horizontal.3", "Settings"),
       iconButton(
         "toggle-agents",

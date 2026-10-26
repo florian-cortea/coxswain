@@ -62,6 +62,8 @@ import {
 } from "../core/agents";
 import {
   getAppearance,
+  getSoftDark,
+  setSoftDark,
   setAppearance,
   getCodeTheme,
   setCodeTheme,
@@ -441,9 +443,6 @@ const menu = Menu.buildFromTemplate([
   { role: "windowMenu" },
 ]);
 
-// Soft Dark changes the app palette while keeping native controls and media queries in dark mode.
-const nativeAppearance = (value: Appearance) => (value === "soft-dark" ? "dark" : value);
-
 app.whenReady().then(async () => {
   await recordInteractions();
   // Packaged builds carry the icon in the bundle; this is for `pnpm dev`, which runs Electron's own.
@@ -455,7 +454,7 @@ app.whenReady().then(async () => {
   });
   const db = openDatabase(join(app.getPath("userData"), "coxswain.db"));
   // Apply before creating a window so a saved override is used from the first frame.
-  nativeTheme.themeSource = nativeAppearance(await getAppearance(db));
+  nativeTheme.themeSource = await getAppearance(db);
   ipcMain.handle("diagram:preview", (e, svg: string) => {
     const parent = BrowserWindow.fromWebContents(e.sender);
     return parent ? showDiagram(parent, svg) : false;
@@ -464,9 +463,11 @@ app.whenReady().then(async () => {
   ipcMain.handle("settings:set-code-theme", async (_, value: CodeTheme) => {
     await setCodeTheme(db, value);
   });
+  ipcMain.handle("settings:soft-dark", () => getSoftDark(db));
+  ipcMain.handle("settings:set-soft-dark", (_, enabled: boolean) => setSoftDark(db, enabled));
   ipcMain.handle("settings:appearance", () => getAppearance(db));
   ipcMain.handle("settings:set-appearance", async (_, value: Appearance) => {
-    nativeTheme.themeSource = nativeAppearance(await setAppearance(db, value));
+    nativeTheme.themeSource = await setAppearance(db, value);
   });
   ipcMain.handle("setup:check", () => checkSetup());
   ipcMain.handle("projects:list", () => listProjects(db));
@@ -849,8 +850,6 @@ app.whenReady().then(async () => {
       workspaceId: number | null,
     ) => {
       const autoUpdate = workspaceId === null ? false : await getAutoUpdate(db, workspaceId);
-      const appearance = await getAppearance(db);
-      const codeTheme = await getCodeTheme(db);
       return new Promise<SettingsMenuResult>((resolve) => {
         const result = menuResult<SettingsMenuResult>(resolve, { kind: "dismissed" });
         const display = (settings: ViewSettings) => result.pick({ kind: "display", settings });
@@ -861,37 +860,6 @@ app.whenReady().then(async () => {
             click: () => result.pick({ kind: "app" }),
           },
           { type: "separator" },
-          {
-            label: "Appearance",
-            submenu: (["system", "light", "dark", "soft-dark"] as const).map((value) => ({
-              label: value === "soft-dark" ? "Soft Dark" : value[0].toUpperCase() + value.slice(1),
-              type: "radio" as const,
-              checked: appearance === value,
-              click: async () => {
-                nativeTheme.themeSource = nativeAppearance(await setAppearance(db, value));
-                result.pick({ kind: "dismissed" });
-              },
-            })),
-          },
-          {
-            label: "Code Theme",
-            submenu: (
-              [
-                { value: "default", label: "Default" },
-                { value: "one-dark", label: "One Dark (reference)" },
-                { value: "github", label: "GitHub" },
-                { value: "catppuccin", label: "Catppuccin" },
-              ] as const
-            ).map(({ value, label }) => ({
-              label,
-              type: "radio" as const,
-              checked: codeTheme === value,
-              click: async () => {
-                await setCodeTheme(db, value);
-                result.pick({ kind: "dismissed" });
-              },
-            })),
-          },
           {
             label: "Diff Layout",
             submenu: (["unified", "split"] as const).map((value) => ({

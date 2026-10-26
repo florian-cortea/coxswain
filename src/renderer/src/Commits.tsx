@@ -181,8 +181,12 @@ function Row(props: {
         </span>
         {props.size.files > 0 && (
           <span className="ml-auto shrink-0 font-mono">
-            <span className="text-green-600 dark:text-green-500">+{props.size.additions}</span>{" "}
-            <span className="text-red-600 dark:text-red-500">−{props.size.deletions}</span>
+            <span className="text-[var(--sidebar-added-light)] dark:text-green-500">
+              +{props.size.additions}
+            </span>{" "}
+            <span className="text-[var(--sidebar-deleted-light)] dark:text-red-500">
+              −{props.size.deletions}
+            </span>
           </span>
         )}
       </span>

@@ -1,7 +1,8 @@
+import { AgentSelect } from "./AgentSelect";
 import { useQuery } from "@tanstack/react-query";
 import type { GuideOverride, GuideSettings } from "../../../core/guides";
 import { core } from "../queries";
-import { Button, SegmentedControl } from "./button";
+import { Button } from "./button";
 import { ChevronDownIcon, SpinnerIcon } from "./icons";
 import { cn, muted } from "./styles";
 import { ErrorText } from "./text";
@@ -58,13 +59,10 @@ export function GuideRunOptions(props: {
       {props.override && (
         <div className="flex flex-wrap items-center gap-3">
           <span className="w-24 shrink-0 text-[13px] font-medium">Agent</span>
-          <SegmentedControl
+          <AgentSelect
             value={agent}
+            disabled={props.disabled}
             onChange={(agent) => props.onChange({ agent, model: undefined, effort: undefined })}
-            options={[
-              { value: "claude", label: "Claude Code", disabled: props.disabled },
-              { value: "codex", label: "Codex", disabled: props.disabled },
-            ]}
           />
           {props.value.agent !== undefined && (
             <Button

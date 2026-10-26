@@ -1,8 +1,9 @@
+import { resolvedAppearance } from "../../shared/appearance";
 import { WorkerPoolContextProvider, useWorkerPool } from "@pierre/diffs/react";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import DiffsWorker from "@pierre/diffs/worker/worker.js?worker";
 import { RouterProvider } from "@tanstack/react-router";
-import { StrictMode, useEffect, useLayoutEffect } from "react";
+import { StrictMode, useEffect, useLayoutEffect, useSyncExternalStore } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import { core, queryClient } from "./queries";
@@ -18,14 +19,24 @@ for (const [name, value] of Object.entries(uiMetrics))
 function AppearanceSync() {
   const appearance = useQuery(core("getAppearance")).data;
   const codeTheme = useQuery(core("getCodeTheme")).data;
+  const softDark = useQuery(core("getSoftDark")).data;
+  const dark = useSyncExternalStore(
+    (listener) => {
+      const media = matchMedia("(prefers-color-scheme: dark)");
+      media.addEventListener("change", listener);
+      return () => media.removeEventListener("change", listener);
+    },
+    () => matchMedia("(prefers-color-scheme: dark)").matches,
+  );
   const worker = useWorkerPool();
   useEffect(() => {
     if (codeTheme)
       void worker?.setRenderOptions({ theme: codeThemes(codeTheme) }).catch(console.error);
   }, [worker, codeTheme]);
   useLayoutEffect(() => {
-    if (appearance) document.documentElement.dataset.appearance = appearance;
-  }, [appearance]);
+    if (appearance && softDark !== undefined)
+      document.documentElement.dataset.appearance = resolvedAppearance(appearance, softDark, dark);
+  }, [appearance, softDark, dark]);
   return null;
 }
 
