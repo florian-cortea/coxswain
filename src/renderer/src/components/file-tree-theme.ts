@@ -8,27 +8,33 @@ import { codeTreeStyles } from "./code-theme";
 export function useFileTreeTheme() {
   const theme = useQuery(core("getCodeTheme")).data ?? "default";
   return useQuery({
-    queryKey: ["file-tree-theme", theme],
+    queryKey: ["file-tree-theme", theme, "linear-inspired-text-colors"],
     queryFn: () => codeTreeStyles(theme),
     staleTime: Infinity,
     placeholderData: (before) => before,
   }).data;
 }
 
-// Blend toward readable label gray rather than lowering opacity against the surface.
+// Light status colors match the Guide counters; dark mode keeps its theme blend.
 export const softenFileStatus = (color: string) =>
-  `color-mix(in srgb, ${color} var(--guide-file-status-strength), light-dark(#404040, #d4d4d4))`;
+  `light-dark(${color}, color-mix(in srgb, ${color} var(--guide-file-status-strength), #d4d4d4))`;
 
 export const fileStatusColor = (status: ChangedFile["status"] | undefined) =>
   match(status)
     .with("added", () =>
-      softenFileStatus("var(--trees-theme-git-added-fg, light-dark(#16a994, #00cab1))"),
+      softenFileStatus(
+        "var(--trees-theme-git-added-fg, light-dark(var(--sidebar-added-light), #00cab1))",
+      ),
     )
     .with("modified", "renamed", () =>
-      softenFileStatus("var(--trees-theme-git-modified-fg, light-dark(#1ca1c7, #08c0ef))"),
+      softenFileStatus(
+        "var(--trees-theme-git-modified-fg, light-dark(var(--sidebar-modified-light), #08c0ef))",
+      ),
     )
     .with("deleted", () =>
-      softenFileStatus("var(--trees-theme-git-deleted-fg, light-dark(#ff2e3f, #ff6762))"),
+      softenFileStatus(
+        "var(--trees-theme-git-deleted-fg, light-dark(var(--sidebar-deleted-light), #ff6762))",
+      ),
     )
     .with(undefined, () => undefined)
     .exhaustive();

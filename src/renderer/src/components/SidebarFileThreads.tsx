@@ -55,10 +55,14 @@ export function SidebarFileThreads(props: {
             {file && (
               <span className="flex shrink-0 gap-1.5 font-mono text-[11px] opacity-80">
                 {file.additions > 0 && (
-                  <span className="text-green-600 dark:text-green-400">+{file.additions}</span>
+                  <span className="text-[var(--sidebar-added-light)] dark:text-green-400">
+                    +{file.additions}
+                  </span>
                 )}
                 {file.deletions > 0 && (
-                  <span className="text-red-600 dark:text-red-400">−{file.deletions}</span>
+                  <span className="text-[var(--sidebar-deleted-light)] dark:text-red-400">
+                    −{file.deletions}
+                  </span>
                 )}
               </span>
             )}

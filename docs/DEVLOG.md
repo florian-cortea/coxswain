@@ -7,6 +7,49 @@ Where the build stands and what we owe. Newest entry first. Terms are defined in
 
 - With every workspace tab closed or removed, the window took no clicks in its top bar. The empty canvas still drew its own placeholder title bar, an empty `-webkit-app-region: drag` strip that sat under the absolutely positioned workspace bar and, coming later in the DOM, overrode its buttons' `no-drag`. The placeholder is gone; the workspace bar is the only title bar there.
 
+## 2026-10-26 — Automatic code theme variants
+
+- Files, diffs and the Settings sample explicitly follow the resolved app appearance when selecting each code theme’s light/dark variant. System follows OS changes; Soft Dark uses the dark variant, preserving the selected family.
+- The document color scheme also reflects the resolved appearance for shared tree colors and popovers. Coverage resolves both variants of all twelve bundled families and checks their declared light/dark type.
+
+## 2026-10-26 — Calmer light-mode sidebar colors
+
+- Matched light-mode green/red to the user’s Linear screenshot (#168c28/#cf3a42), with a similarly saturated medium blue (#356fba) for modifications, for filenames/icons and addition/deletion counts. Shared CSS tokens keep Guide, Changes, trees and diff summaries consistent. Dark-mode status colors retain their existing theme palette and blending.
+- Source comparison and rationale are recorded in docs/research/sidebar-status-colors.md.
+
+## 2026-10-26 — Readable light sidebar status colors
+
+- Light-mode status colors use the Guide counter palette for consistent green/red alongside blue modifications. Dark-mode blending is unchanged.
+- Guide, Changes and file tree labels/icons share the adjusted palette; small addition/deletion counts use darker light-mode colors in sidebars and file/commit summaries.
+
+## 2026-10-26 — Compact PR overview button
+
+- The top bar overview toggle now reads PR in semibold and sits left of GitHub and preview actions in native and standard chrome.
+
+## 2026-10-26 — Consistent agent switch
+
+- Claude Code/Codex selection uses the same anchored dropdown as code themes in Settings and Guide update options, preserving disabled states and the selected agent.
+
+## 2026-10-26 — More code themes
+
+- Added Ayu, Everforest, Gruvbox, Kanagawa, Night Owl, Rosé Pine, Solarized and Vitesse from Pierre/Shiki’s bundled open-source themes (https://shiki.style/themes). Each follows light/dark appearance across files, diffs and trees without a new dependency.
+- Settings uses a dropdown to the right of the sample, showing the saved theme on load. A shared preview picker supports hover and keyboard previews without saving; dismissal restores the saved theme. The menu explicitly anchors to its trigger in the top layer so it stays beneath the dropdown instead of falling back to the window origin. A shared catalog keeps stored IDs, labels and theme pairs consistent; persistence coverage includes every choice.
+
+## 2026-10-26 — Appearance controls in Settings only
+
+- Removed Appearance, Soft Dark and Code Theme from the top dropdown; all remain in Settings → Appearance. The dropdown no longer reads those preferences just to open.
+
+## 2026-10-26 — Independent Soft Dark palette
+
+- Soft Dark is a separate checkbox from System/Light/Dark in Settings and the top dropdown. It applies only when the effective mode is dark, so System can follow the OS while retaining the softer dark palette. Light mode leaves the preference saved and inactive.
+- Native controls keep the selected mode; renderer palette, diff styling and diagrams resolve against that mode and OS changes. Existing Soft Dark selections preserve Dark plus the enabled palette without a schema migration.
+- Regression coverage checks legacy settings, independent persistence and effective palettes under both OS modes and explicit overrides.
+
+## 2026-10-26 — Keep Chat visibility during Guide updates
+
+- Manual Guide updates, automatic refreshes and retries no longer open Chat or change the selected conversation. Removed Guide orchestration’s focus/open capability and the Update Guide dialog’s local session reset. View session remains the explicit way to open the Guide conversation.
+- Guide lifecycle regression verifies the saved closed Chat preference survives manual updates, automatic refresh and retries.
+
 ## 2026-10-26 — Cross-platform release packaging
 
 - Enforce LF checkout for dependency patches with .gitattributes. Windows checkout had converted them to CRLF, causing pnpm 12 to reject the patch header as an invalid unquoted filename. The v1.8.0 build stopped before publication; v1.8.1 contains this packaging fix.

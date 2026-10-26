@@ -102,4 +102,4 @@ Claude Code (`@agentclientprotocol/claude-agent-acp`, built on the Claude Agent 
   first.
 - A model set in the user's Claude Code settings is ignored until the user picks one in coxswain.
 
-Guide generation and automatic refresh use the workspace’s normal durable Guide session. Creation and turns can leave the selected Chat session unchanged; explicit requests focus Guide. Permission callbacks may leave a request pending for answerPermission through the session projection. Per-turn Guide picks are strict and restore the preceding session configuration after completion, without changing composer preferences.
+Guide generation and automatic refresh use the workspace’s normal durable Guide session. Creation and turns can leave the selected Chat session unchanged; Guide updates leave visibility and selection unchanged; View session explicitly opens/selects Guide. Permission callbacks may leave a request pending for answerPermission through the session projection. Per-turn Guide picks are strict and restore the preceding session configuration after completion, without changing composer preferences.

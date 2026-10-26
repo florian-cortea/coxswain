@@ -1,3 +1,4 @@
+import { useCodeThemeType } from "./components/useCodeThemeType";
 import { fileContents } from "./components/file-contents";
 import { holdScrollPosition } from "./components/hold-scroll-position";
 import type { DiffLineAnnotation, LineAnnotation, SelectedLineRange } from "@pierre/diffs";
@@ -175,6 +176,7 @@ export const Viewer = memo(function Viewer(props: Props) {
   };
   const path = openedPath(opened);
   const codeTheme = useQuery(core("getCodeTheme")).data ?? "default";
+  const themeType = useCodeThemeType();
   const revealed = entries.find((e) => e.id === props.revealThread && e.path === path);
   // A stacked file diff reads its file only once it scrolls near the screen: a big PR has thousands, and reading
   // them all at once queues every other call behind thousands of git processes.
@@ -345,6 +347,7 @@ export const Viewer = memo(function Viewer(props: Props) {
     () => ({
       ...baseOptions,
       theme: codeThemes(codeTheme),
+      themeType,
       onPostRender,
       diffStyle: props.diffStyle,
       collapsed: props.collapsed,
@@ -374,6 +377,7 @@ export const Viewer = memo(function Viewer(props: Props) {
       props.diffStyle,
       props.collapsed,
       codeTheme,
+      themeType,
       workspace.id,
       path,
       oldPath,
@@ -614,8 +618,12 @@ export const Viewer = memo(function Viewer(props: Props) {
           <span className="min-w-0 flex-1 truncate font-mono">{path}</span>
           {opened.kind === "diff" && (
             <span className="shrink-0 font-mono">
-              <span className="text-green-600 dark:text-green-400">+{opened.file.additions}</span>{" "}
-              <span className="text-red-600 dark:text-red-400">−{opened.file.deletions}</span>
+              <span className="text-[var(--sidebar-added-light)] dark:text-green-400">
+                +{opened.file.additions}
+              </span>{" "}
+              <span className="text-[var(--sidebar-deleted-light)] dark:text-red-400">
+                −{opened.file.deletions}
+              </span>
             </span>
           )}
           {(props.stacked || opened.kind === "diff") && (

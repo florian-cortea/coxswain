@@ -36,7 +36,7 @@ use web controls; reduced transparency and high contrast use solid surfaces (ADR
 **Right sidebar**: the optional Chat pane for agent conversation. Threads are nested in the left Guide sidebar.
 
 **Appearance**: the app’s colour mode, chosen in Settings: _System_ follows the operating system,
-_Light_ or _Dark_ overrides it; _Soft Dark_ uses a lighter charcoal palette with muted diff fills. The choice applies to every window and is kept across restarts.
+_Light_ or _Dark_ overrides it. _Soft Dark_ is an independent preference for a lighter charcoal dark palette with muted diff fills; it applies whenever the effective mode is dark, including System, and has no effect in light mode. Both choices apply to every window and persist across restarts.
 
 **Code theme**: the saved syntax-highlighting palette for code and file diffs, independent of Appearance.
 _Default_ uses Pierre; _One Dark_ follows the reference's purple, amber and cyan syntax; _GitHub_ and _Catppuccin_ are alternatives. Each has light and dark variants.

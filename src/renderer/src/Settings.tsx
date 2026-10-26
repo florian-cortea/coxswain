@@ -1,3 +1,7 @@
+import { useCodeThemeType } from "./components/useCodeThemeType";
+import { AgentSelect } from "./components/AgentSelect";
+import { PreviewSelect } from "./components/PreviewSelect";
+import { codeThemeOptions } from "../../shared/code-themes";
 import type { DefaultPromptName } from "../../core/prompt-settings";
 import { TextArea } from "./components/field";
 import { File } from "@pierre/diffs/react";
@@ -135,6 +139,7 @@ export function Settings({
 
 function Appearance() {
   const query = useQuery(core("getAppearance"));
+  const softDark = useQuery(core("getSoftDark"));
   const [error, setError] = useState<string | null>(null);
   const save = async (value: AppearanceMode) => {
     setError(null);
@@ -154,15 +159,32 @@ function Appearance() {
             { value: "system", label: "System" },
             { value: "light", label: "Light" },
             { value: "dark", label: "Dark" },
-            { value: "soft-dark", label: "Soft Dark" },
           ]}
         />
       ) : (
         <span className={muted}>Loading…</span>
       )}
+      <p className={helpText}>System follows your operating system’s appearance.</p>
+      <label className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={softDark.data ?? false}
+          disabled={!softDark.isSuccess}
+          onChange={async (event) => {
+            setError(null);
+            try {
+              await window.coxswain.setSoftDark(event.target.checked);
+            } catch (error) {
+              setError((error as Error).message);
+            }
+          }}
+        />
+        Soft Dark
+      </label>
       <p className={helpText}>
-        System follows your operating system’s appearance. Soft Dark uses lighter charcoal surfaces.
+        Use a softer palette whenever dark mode is active, including System mode.
       </p>
+      {softDark.isError && <ErrorText>Couldn’t load Soft Dark preference.</ErrorText>}
       {query.isError && <ErrorText>Couldn't load appearance.</ErrorText>}
       {error && <ErrorText>{error}</ErrorText>}
     </Card>
@@ -190,14 +212,10 @@ function GuideModels({ workspaceId }: { workspaceId?: number }) {
       </p>
       <div className="flex flex-wrap items-center gap-3">
         <span className="w-24 shrink-0 font-medium">Agent</span>
-        <SegmentedControl
+        <AgentSelect
           value={settings.agent}
           // Each agent keeps its own model; the core reads it back.
           onChange={(agent) => save({ agent })}
-          options={[
-            { value: "claude", label: "Claude Code" },
-            { value: "codex", label: "Codex" },
-          ]}
         />
       </div>
       <GuideRunOptions
@@ -232,18 +250,20 @@ def summarize(change: Change) -> str:
 };
 
 function CodeThemes() {
+  const themeType = useCodeThemeType();
   const theme = useQuery(core("getCodeTheme"));
-  const [hovered, setHovered] = useState<CodeTheme | null>(null);
-  const previewTheme = hovered ?? theme.data ?? "default";
+  const [preview, setPreview] = useState<CodeTheme | null>(null);
+  const previewTheme = preview ?? theme.data ?? "default";
   const previewOptions = useMemo(
     () => ({
       theme: codeThemes(previewTheme),
+      themeType,
       disableFileHeader: true,
       overflow: "wrap" as const,
       unsafeCSS:
         ":host { --diffs-bg: var(--review-file-bg); --diffs-font-size: 12px; --diffs-line-height: 20px; }",
     }),
-    [previewTheme],
+    [previewTheme, themeType],
   );
   const [error, setError] = useState<string | null>(null);
   const save = async (value: CodeTheme) => {
@@ -255,29 +275,29 @@ function CodeThemes() {
     }
   };
   return (
-    <Card className="flex flex-col items-start gap-3">
+    <Card className="code-theme-card flex flex-wrap items-start gap-3">
       {theme.data && (
-        <SegmentedControl<CodeTheme>
-          value={theme.data}
-          onChange={save}
-          onPreview={setHovered}
-          options={[
-            { value: "default", label: "Default" },
-            { value: "one-dark", label: "One Dark" },
-            { value: "github", label: "GitHub" },
-            { value: "catppuccin", label: "Catppuccin" },
-          ]}
-        />
+        <div className="code-theme-picker w-44 shrink-0">
+          <PreviewSelect
+            label="Code theme"
+            value={theme.data}
+            options={codeThemeOptions}
+            onChange={save}
+            onPreview={setPreview}
+          />
+        </div>
       )}
       <div
-        className="w-full min-w-0 overflow-hidden rounded-xl border border-neutral-200 dark:border-neutral-800"
+        className="code-theme-preview min-w-0 flex-1 overflow-hidden rounded-xl border border-neutral-200 dark:border-neutral-800"
         aria-label="Code theme preview"
       >
-        {/* A tiny sample uses its own highlighter so hovering never changes the workspace's shared worker theme. */}
+        {/* A tiny sample uses its own highlighter, separate from workspace workers. */}
         <File file={themeSample} options={previewOptions} disableWorkerPool />
       </div>
-      <p className={helpText}>Hover or focus a theme to preview it. Click to save.</p>
-      <p className={helpText}>Code themes follow the app’s light or dark appearance.</p>
+      <p className={cn(helpText, "w-full")}>
+        Each theme includes light and dark variants that follow the app’s appearance automatically.
+        Hover to preview; select to save.
+      </p>
       {(error || theme.isError) && <ErrorText>{error ?? "Couldn't load code theme."}</ErrorText>}
     </Card>
   );

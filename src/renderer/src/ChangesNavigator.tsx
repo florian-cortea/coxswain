@@ -143,8 +143,12 @@ export function ChangesNavigator(props: NavigatorProps) {
                     <span className="flex-1" />
                     {groupFiles.length > 0 && (
                       <span className="flex w-24 shrink-0 justify-end gap-1.5 font-mono text-[11px] font-normal opacity-80">
-                        <span className="text-green-600 dark:text-green-400">+{additions}</span>
-                        <span className="text-red-600 dark:text-red-400">−{deletions}</span>
+                        <span className="text-[var(--sidebar-added-light)] dark:text-green-400">
+                          +{additions}
+                        </span>
+                        <span className="text-[var(--sidebar-deleted-light)] dark:text-red-400">
+                          −{deletions}
+                        </span>
                       </span>
                     )}
                   </Button>
