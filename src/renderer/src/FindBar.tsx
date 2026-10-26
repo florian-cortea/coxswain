@@ -26,7 +26,7 @@ export function FindBar({ pane }: { pane: FindPane }) {
   if (!open) return null;
   return (
     <div
-      className={cn("flex shrink-0 flex-wrap items-center gap-1 border-b p-1.5 text-xs", divider)}
+      className={cn("flex shrink-0 flex-wrap items-center gap-2 border-b p-3 text-xs", divider)}
       role="search"
       aria-label={`Find in ${state.target!.label}`}
       onKeyDown={(e) => {

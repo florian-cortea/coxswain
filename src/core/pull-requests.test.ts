@@ -97,6 +97,18 @@ test("review threads mirror into entries, and what's new here is postable", asyn
   const listed = () => listEntries(db, 1, mergeBase, mergeBase, head);
   let entries = await listed();
   const root = entries.find((e) => e.githubThreadId === "T1")!;
+  // GitHub actor type persists independently of live PR details, even without a bot suffix.
+  thread.comments[0].authorIsBot = true;
+  thread.comments[1].authorIsBot = true;
+  assert.equal(await syncThreads(db, 1, [thread], mergeBase), true);
+  const cachedBots = await listed();
+  assert.equal(cachedBots.find((e) => e.githubId === "C1")?.authorIsBot, true);
+  assert.equal(cachedBots.find((e) => e.githubId === "C2")?.authorIsBot, true);
+  assert.equal(await syncThreads(db, 1, [thread], mergeBase), false);
+  thread.comments[0].authorIsBot = false;
+  thread.comments[1].authorIsBot = false;
+  await syncThreads(db, 1, [thread], mergeBase);
+
   assert.deepEqual(
     [root.kind, root.author, root.code, root.state, root.shown],
     ["comment", "ana", "two", "current", true],

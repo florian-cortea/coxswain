@@ -101,3 +101,5 @@ Claude Code (`@agentclientprotocol/claude-agent-acp`, built on the Claude Agent 
 - A long-lived adapter process to keep, restart and stop. In return, turns skip Claude Code's start-up after the
   first.
 - A model set in the user's Claude Code settings is ignored until the user picks one in coxswain.
+
+Guide generation and automatic refresh use the workspace’s normal durable Guide session. Creation and turns can leave the selected Chat session unchanged; explicit requests focus Guide. Permission callbacks may leave a request pending for answerPermission through the session projection. Per-turn Guide picks are strict and restore the preceding session configuration after completion, without changing composer preferences.

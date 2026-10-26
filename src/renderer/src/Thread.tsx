@@ -1,13 +1,21 @@
+import { ChevronDownIcon, ChevronRightIcon } from "./components/icons";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import type { NewEntry, ReviewEntry } from "../../core/review";
 import { Entry, TurnStatus } from "./ChatEntry";
 import { Button, SegmentedControl } from "./components/button";
 import { TextArea } from "./components/field";
-import { SendIcon, SpinnerIcon } from "./components/icons";
+import {
+  ArrowUpIcon,
+  CheckIcon,
+  MessageSquareIcon,
+  SendIcon,
+  SpinnerIcon,
+  XIcon,
+} from "./components/icons";
 import { cn, divider, muted } from "./components/styles";
 import { ErrorText, Prose } from "./components/text";
-import { byAgent, isComment } from "./format";
+import { ago, isComment, shortDateTime } from "./format";
 import { core, queryClient } from "./queries";
 import type { Ask, Turn } from "./Viewer";
 
@@ -25,7 +33,7 @@ export const quoted = (text: string) => {
 };
 // contain: inline-size, so nothing in a box (a resolved thread's one-line header) widens the file diff's code column.
 const box =
-  "m-2 flex [contain:inline-size] flex-col gap-1.5 rounded-md border border-neutral-300 bg-white p-2 font-sans text-sm dark:border-neutral-700 dark:bg-neutral-900";
+  "review-comment-card m-2 flex [contain:inline-size] flex-col gap-2 bg-neutral-50 p-3 font-sans text-sm shadow-sm dark:bg-neutral-800";
 
 type DraftBoxProps = {
   label: string; // what it's on: its lines, or the passage quoted
@@ -37,13 +45,17 @@ type DraftBoxProps = {
 // A new thread on the lines or passage picked.
 export function DraftBox({ label, canPost, onSend, onCancel }: DraftBoxProps) {
   return (
-    <div className={box}>
-      <div className={cn("flex items-center justify-between text-xs", muted)}>
-        <span className="truncate">{label}</span>
-        <Button variant="ghost" title="Cancel (Esc)" className="px-1" onClick={onCancel}>
-          ✕
-        </Button>
-      </div>
+    <div className={cn(box, "relative")} aria-label={label}>
+      <span className="sr-only">{label}</span>
+      <Button
+        variant="ghost"
+        title="Cancel (Esc)"
+        aria-label="Cancel comment"
+        className="absolute top-5 right-5 p-1"
+        onClick={onCancel}
+      >
+        <XIcon />
+      </Button>
       <Composer
         autoFocus
         rows={3}
@@ -60,11 +72,8 @@ type ComposerProps = {
   autoFocus?: boolean;
   rows: number;
   placeholder: string;
-  // A reply's Comment/Agent pick is its box's own: Agent after the agent's own entry (afterAgent), so a conversation
-  // carries on with Enter, else the saved preference until changed. In a comment thread (comment) there's no pick: a
-  // reply is a comment.
+  // Replies follow the thread's kind; only a new thread offers a mode choice.
   reply?: boolean;
-  afterAgent?: boolean;
   comment?: boolean;
   // With a PR, a comment (a new comment thread, or a reply in one) has a Post to GitHub checkbox: on, it's posted at
   // once; off, it waits for Submit Review. One global preference, like the toggle.
@@ -79,10 +88,8 @@ function Composer(props: ComposerProps) {
   const [body, setBody] = useState("");
   // A global preference (every composer shares it), so the query is updated at once, then stored.
   const saved = useQuery(core("getCommentToAgent")).data ?? false;
-  const [picked, setPicked] = useState<boolean | null>(null);
-  const toAgent = !props.comment && (picked ?? (props.afterAgent || saved));
+  const toAgent = !props.comment && (!!props.reply || saved);
   const setToAgent = (on: boolean) => {
-    if (props.reply) return setPicked(on);
     queryClient.setQueryData(core("getCommentToAgent").queryKey, on);
     void window.coxswain.setCommentToAgent(on);
   };
@@ -96,7 +103,9 @@ function Composer(props: ComposerProps) {
   const input = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
     if (!props.autoFocus) return;
-    const t = setTimeout(() => input.current?.focus());
+    // Focus the draft without asking Chromium to scroll the whole input into view.
+    // Its annotation opens below the selected line, which should keep its position.
+    const t = setTimeout(() => input.current?.focus({ preventScroll: true }));
     return () => clearTimeout(t);
   }, []);
   const send = () => {
@@ -105,17 +114,22 @@ function Composer(props: ComposerProps) {
     setBody("");
   };
   return (
-    <>
+    <div
+      className="review-comment-composer flex min-w-0 flex-col gap-2"
+      data-cancellable={!!props.onCancel}
+    >
       <TextArea
+        className={cn("w-full text-sm leading-relaxed", props.reply ? "min-h-8" : "min-h-20")}
         ref={input}
         value={body}
         onChange={(e) => setBody(e.target.value)}
         onSubmit={send}
         onCancel={props.onCancel}
         rows={props.rows}
-        placeholder={`${props.placeholder} (Enter to send)`}
+        aria-label={`${props.placeholder} (Enter to send)`}
+        placeholder={toAgent ? "Ask the agent about this change…" : "Add a comment…"}
       />
-      <div className="flex items-center justify-end gap-2">
+      <div className="flex items-center justify-end gap-3">
         {postable && (
           <label
             className={cn("mr-auto flex items-center gap-1.5 text-xs", muted)}
@@ -129,7 +143,8 @@ function Composer(props: ComposerProps) {
             Post to GitHub
           </label>
         )}
-        {!props.comment && (
+        <div className="flex-1" />
+        {!props.comment && !props.reply && (
           <SegmentedControl
             value={toAgent}
             onChange={setToAgent}
@@ -137,6 +152,7 @@ function Composer(props: ComposerProps) {
               {
                 value: false,
                 label: "Comment",
+                icon: <MessageSquareIcon />,
                 title: props.reply
                   ? "A note in the thread, for the agent to see with your next question"
                   : "A comment thread: Submit Review posts its comments to GitHub as you wrote them",
@@ -144,6 +160,7 @@ function Composer(props: ComposerProps) {
               {
                 value: true,
                 label: "Agent",
+                icon: <SendIcon />,
                 title: props.reply
                   ? "Send to the agent, who answers in the thread"
                   : "An agent thread, to explore or change the code with the agent; it stays out of the review",
@@ -152,19 +169,22 @@ function Composer(props: ComposerProps) {
           />
         )}
         <Button
-          variant="primary"
+          variant="ghost"
+          className="flex size-7 shrink-0 items-center justify-center rounded-full bg-neutral-200 p-0 dark:bg-neutral-700"
           title={postable && postNow ? "Send and post to GitHub (Enter)" : "Send (Enter)"}
           disabled={!body.trim()}
           onClick={send}
         >
-          <SendIcon />
+          <ArrowUpIcon />
         </Button>
       </div>
-    </>
+    </div>
   );
 }
 
 type ThreadBoxProps = {
+  revealed?: boolean;
+  revealVersion?: number;
   root: ReviewEntry; // the thread's first note or question
   replies: ReviewEntry[]; // notes, follow-up questions and answers, in order
   turn: Turn | undefined;
@@ -187,6 +207,8 @@ type ThreadBoxProps = {
 // to edit before it's added (and posted, with Post to GitHub on). Resolved, it folds to its header and first comment
 // until reopened.
 export function ThreadBox({
+  revealed,
+  revealVersion,
   root,
   replies,
   turn,
@@ -200,6 +222,16 @@ export function ThreadBox({
   onSummarize,
   onAddComment,
 }: ThreadBoxProps) {
+  const [expanded, setExpanded] = useState(false);
+  const [resolvedAt, setResolvedAt] = useState(root.resolvedAt);
+  if (resolvedAt !== root.resolvedAt) {
+    setResolvedAt(root.resolvedAt);
+    setExpanded(false);
+  }
+  useEffect(() => {
+    if (revealed) setExpanded(true);
+  }, [revealed, revealVersion]);
+  const showResolved = expanded;
   const running = turn?.running ?? false;
   const agent = !isComment(root);
   const postNow = useQuery(core("getPostComments")).data ?? false;
@@ -211,6 +243,8 @@ export function ThreadBox({
   const lastOwn = [root, ...replies].findLast((e) => e.kind === "note" || e.kind === "question");
   const posted = [root, ...replies].some((e) => e.kind === "note" && e.githubId);
   const others = [root, ...replies].some((e) => e.kind === "comment");
+  const firstUser =
+    [root, ...replies].find((e) => e.kind === "note" || e.kind === "question") ?? root;
   const failing = (p: Promise<unknown>) => {
     setError(null);
     return p.catch((e: Error) =>
@@ -220,6 +254,7 @@ export function ThreadBox({
   const menu = async () => {
     // Others' comments on GitHub are theirs, and GitHub keeps a thread they replied to.
     const picked = await window.coxswain.showThreadMenu({
+      edit: !agent && firstUser.kind === "note",
       send: agent && !running && lastOwn?.kind === "note",
       summarize: agent && !running && !root.resolvedAt && summary === false,
       delete: others ? "others" : true,
@@ -244,80 +279,93 @@ export function ThreadBox({
         setSummary((s) => (s === true ? false : s)),
       );
     }
+    return picked;
   };
+  const resolveControl = (
+    <Button
+      variant="ghost"
+      title={
+        (root.resolvedAt ? "Resolved: click to reopen" : "Resolve: mark the thread done") +
+        (root.githubThreadId ? (postNow ? " · On GitHub too" : " · Here until Submit Review") : "")
+      }
+      aria-label={root.resolvedAt ? "Reopen thread" : "Resolve thread"}
+      disabled={running}
+      className={cn("shrink-0 px-1", root.resolvedAt && "text-green-600")}
+      onClick={() => void failing(onResolve(!root.resolvedAt))}
+    >
+      <CheckIcon />
+    </Button>
+  );
+  const disclosureControl = root.resolvedAt ? (
+    <Button
+      variant="ghost"
+      className={cn("shrink-0 px-1", muted)}
+      title={showResolved ? "Collapse thread" : "Expand thread"}
+      aria-label={showResolved ? "Collapse thread" : "Expand thread"}
+      aria-expanded={showResolved}
+      onClick={() => setExpanded((before) => !before)}
+    >
+      {showResolved ? <ChevronDownIcon /> : <ChevronRightIcon />}
+    </Button>
+  ) : null;
   return (
-    <div id={`thread:${root.id}`} className={box}>
-      <div className={cn("flex items-center gap-2 text-xs", muted)}>
-        <span className={root.section != null ? "min-w-0 truncate" : "shrink-0"}>
-          {anchorLabel(root)}
-          {root.state === "outdated" && " · outdated"}
-          {root.githubThreadId && " · on GitHub"}
-        </span>
-        {root.resolvedAt ? (
-          <span className="min-w-0 flex-1 truncate">Resolved · {root.body}</span>
-        ) : (
-          <div className="flex-1" />
-        )}
-        <Button
-          variant="ghost"
-          title={
-            (root.resolvedAt
-              ? "Resolved: click to reopen"
-              : "Resolve: mark the thread done; it folds to one line") +
-            (root.githubThreadId
-              ? postNow
-                ? "\nOn GitHub too, at once (Post to GitHub is on)"
-                : "\nHere only, until Submit Review posts it"
-              : "")
-          }
-          disabled={running}
-          className={cn("px-1", root.resolvedAt && "text-green-600")}
-          onClick={() => void failing(onResolve(!root.resolvedAt))}
-        >
-          ✓
-        </Button>
-        <Button
-          variant="ghost"
-          title={
-            agent ? "Delete, send to the agent or summarize as a comment" : "Delete the thread"
-          }
-          className="px-1"
-          onClick={menu}
-        >
-          ⋯
-        </Button>
-      </div>
-      {!root.resolvedAt && (
-        <>
-          {/* One entry after another, a line between them, so who said what reads at a glance. */}
-          <div
-            className={cn(
-              "flex max-h-[60vh] flex-col divide-y overflow-y-auto [&>*]:py-2.5 [&>*:first-child]:pt-1 [&>*:last-child]:pb-1",
-              divide,
-            )}
+    <div id={`thread:${root.id}`} className={box} aria-label={anchorLabel(root)}>
+      {root.resolvedAt && !showResolved && (
+        <div className={cn("flex items-center gap-2 text-xs", muted)}>
+          {disclosureControl}
+          <Button
+            variant="ghost"
+            className="min-w-0 flex-1 truncate text-left"
+            style={{ justifyContent: "flex-start" }}
+            title="Expand resolved thread"
+            onClick={() => setExpanded(true)}
           >
+            Resolved · {root.body}
+          </Button>
+          {resolveControl}
+          <Button variant="ghost" className="px-1" title="Thread options" onClick={menu}>
+            ⋯
+          </Button>
+        </div>
+      )}
+      {(!root.resolvedAt || showResolved) && (
+        <>
+          {/* The inset agent surface distinguishes speakers without a divider between messages. */}
+          <div className="flex flex-col gap-3">
             {[root, ...replies].map((e) => (
-              <Comment key={e.id} entry={e} run={failing} />
+              <Comment
+                key={e.id}
+                entry={e}
+                run={failing}
+                editable={!agent}
+                leadingControl={e.id === firstUser.id ? disclosureControl : undefined}
+                controls={e.id === firstUser.id ? resolveControl : undefined}
+                onThreadMenu={e.id === firstUser.id ? menu : undefined}
+              />
             ))}
             {/* After the turn, until its answer entry is read in place of it (#38). */}
-            {!!turn?.live.some((c) => c.kind !== "user") &&
-              (running || [root, ...replies].at(-1)?.kind === "question") && (
-                <div className="flex flex-col gap-1.5">
-                  <span className={author}>Agent</span>
-                  {turn.live
-                    .filter((c) => c.kind !== "user")
-                    .map((c, i) => (
-                      <Entry key={`live${i}`} entry={c} />
-                    ))}
+            {(running ||
+              turn?.permission ||
+              turn?.error ||
+              (!!turn?.live.some((c) => c.kind !== "user") &&
+                [root, ...replies].at(-1)?.kind === "question")) && (
+              <div className={agentReply}>
+                <span className={author}>Agent</span>
+                {(running || [root, ...replies].at(-1)?.kind === "question") &&
+                  turn?.live
+                    .filter((entry) => entry.kind !== "user")
+                    .map((entry, index) => <Entry key={`live${index}`} entry={entry} />)}
+                <div className="mt-2">
+                  <TurnStatus
+                    running={running}
+                    queued={turn?.queued}
+                    permission={turn?.permission ?? null}
+                    error={turn?.error ?? null}
+                    onAnswer={(optionId) => onAnswerPermission(turn!.permission!.id, optionId)}
+                  />
                 </div>
-              )}
-            <TurnStatus
-              running={running}
-              queued={turn?.queued}
-              permission={turn?.permission ?? null}
-              error={turn?.error ?? null}
-              onAnswer={(optionId) => onAnswerPermission(turn!.permission!.id, optionId)}
-            />
+              </div>
+            )}
           </div>
           {summary === true && (
             <div className={cn("flex items-center gap-1.5 text-xs", muted)}>
@@ -332,7 +380,7 @@ export function ThreadBox({
             </div>
           )}
           {typeof summary === "string" && (summary !== "" || writing) && (
-            <div className={cn("flex flex-col gap-1.5 border-t pt-1.5", divider)}>
+            <div className={cn("flex flex-col gap-2 border-t pt-2", divider)}>
               <span className={cn("text-xs", muted)}>
                 A new comment on {root.section != null ? "this passage" : "these lines"}, for the
                 review
@@ -358,14 +406,13 @@ export function ThreadBox({
               {turn?.queued ? "Don't Send" : "Stop"}
             </Button>
           ) : (
-            <div className={cn("flex flex-col gap-1.5 border-t pt-1.5", divider)}>
+            <div className={cn("flex flex-col gap-2 border-t pt-2", divider)}>
               <Composer
                 rows={1}
                 placeholder="Reply"
                 reply
                 comment={!agent}
                 canPost={canPost}
-                afterAgent={byAgent(replies.at(-1) ?? root)}
                 onSend={onReply}
               />
             </div>
@@ -395,6 +442,9 @@ export async function postEntry(e: NewEntry, toAgent: boolean, onAsk: Ask, post 
 
 // A thread on the canvas, wired to the core: replies, the agent's turn, edit, resolve, delete and send.
 export function EntryThread(props: {
+  revealed?: boolean;
+  revealVersion?: number;
+  onResolved?: (id: number) => void;
   root: ReviewEntry;
   entries: ReviewEntry[]; // the workspace's
   turn: Turn | undefined;
@@ -406,6 +456,8 @@ export function EntryThread(props: {
   const workspaceId = root.workspaceId;
   return (
     <ThreadBox
+      revealed={props.revealed}
+      revealVersion={props.revealVersion}
       root={root}
       replies={props.entries.filter((e) => e.parentId === root.id)}
       turn={props.turn}
@@ -415,7 +467,10 @@ export function EntryThread(props: {
       }
       onStop={() => window.coxswain.stopQuestion(root.id)}
       onAnswerPermission={(id, optionId) => props.onAnswerPermission(root.id, id, optionId)}
-      onResolve={(resolved) => window.coxswain.resolveThread(root.id, resolved)}
+      onResolve={async (resolved) => {
+        await window.coxswain.resolveThread(root.id, resolved);
+        if (resolved) props.onResolved?.(root.id);
+      }}
       onRemove={() => window.coxswain.deleteEntry(root.id)}
       onSend={() => onAsk({ workspaceId, threadId: root.id })}
       onSummarize={() => window.coxswain.summarizeThread(root.id)}
@@ -464,7 +519,7 @@ function EditBox(props: {
 // Who wrote an entry the agent wrote, and why (glossary).
 // Who wrote an entry, over it.
 const author = "mb-1 block text-xs font-medium text-neutral-700 dark:text-neutral-300";
-const divide = "divide-neutral-200 dark:divide-neutral-800";
+const agentReply = "rounded-xl bg-neutral-200/60 p-4 dark:bg-neutral-900/80";
 
 const agentLabels: Partial<Record<ReviewEntry["kind"], string>> = {
   answer: "Agent",
@@ -476,13 +531,39 @@ const agentLabels: Partial<Record<ReviewEntry["kind"], string>> = {
 // or a finding), or a comment on GitHub by its author (ADR 0037). One posted from here says so. The user's own have a
 // ⋯: Edit (in place), Delete (a note; on GitHub too once posted), Open on GitHub. run: the change, failing under the
 // thread.
-function Comment({ entry: e, run }: { entry: ReviewEntry; run: (p: Promise<unknown>) => unknown }) {
+function Comment({
+  entry: e,
+  run,
+  editable,
+  controls,
+  leadingControl,
+  onThreadMenu,
+}: {
+  entry: ReviewEntry;
+  run: (p: Promise<unknown>) => unknown;
+  editable: boolean;
+  controls?: ReactNode;
+  leadingControl?: ReactNode;
+  onThreadMenu?: () => Promise<string>;
+}) {
   const [editing, setEditing] = useState(false);
+  const user = useQuery({
+    ...core("currentUser"),
+    staleTime: 300_000,
+    enabled: e.kind === "note" || e.kind === "question",
+  }).data;
   if (e.kind === "comment")
     return (
       <div>
-        <span className={author}>
-          @{e.author} <span className={cn("font-normal", muted)}>on GitHub</span>
+        <span className={cn(author, "flex items-center gap-2")}>
+          {leadingControl}@{e.author} <span className={cn("font-normal", muted)}>on GitHub</span>
+          <span className="flex-1" />
+          {controls}
+          {onThreadMenu && (
+            <Button variant="ghost" className="px-1" title="Thread options" onClick={onThreadMenu}>
+              ⋯
+            </Button>
+          )}
         </span>
         <Prose className="leading-relaxed">{e.body}</Prose>
       </div>
@@ -491,9 +572,23 @@ function Comment({ entry: e, run }: { entry: ReviewEntry; run: (p: Promise<unkno
   const label = agentLabels[e.kind] && `${agentLabels[e.kind]}${posted}`;
   if (label)
     return (
-      <div>
-        <span className={cn(author, e.kind === "finding" && "text-amber-600 dark:text-amber-400")}>
+      <div className={agentReply}>
+        <span
+          className={cn(
+            author,
+            "flex items-center gap-2",
+            e.kind === "finding" && "text-amber-600 dark:text-amber-400",
+          )}
+        >
+          {leadingControl}
           {label}
+          <span className="flex-1" />
+          {controls}
+          {onThreadMenu && (
+            <Button variant="ghost" className="px-1" title="Thread options" onClick={onThreadMenu}>
+              ⋯
+            </Button>
+          )}
         </span>
         <Prose className="leading-relaxed">{e.body}</Prose>
       </div>
@@ -511,11 +606,16 @@ function Comment({ entry: e, run }: { entry: ReviewEntry; run: (p: Promise<unkno
       />
     );
   const menu = async () => {
+    if (onThreadMenu) {
+      if ((await onThreadMenu()) === "edit" && editable) setEditing(true);
+      return;
+    }
     const picked = await window.coxswain.showCommentMenu({
+      edit: editable,
       delete: e.kind === "note",
       url: e.githubUrl,
     });
-    if (picked === "edit") setEditing(true);
+    if (picked === "edit" && editable) setEditing(true);
     if (
       picked === "delete" &&
       (await window.coxswain.confirm({
@@ -529,23 +629,31 @@ function Comment({ entry: e, run }: { entry: ReviewEntry; run: (p: Promise<unkno
       void run(window.coxswain.deleteComment(e.id));
   };
   return (
-    <div className="group leading-relaxed whitespace-pre-wrap select-text [overflow-wrap:anywhere]">
-      <span className={cn(author, "flex items-center")}>
-        You
-        <span className={cn("font-normal", muted)}>
-          {e.kind === "question" && " → agent"}
-          {posted}
+    <div className="group flex flex-col gap-1.5 leading-relaxed select-text [overflow-wrap:anywhere]">
+      <div className="flex min-w-0 items-center gap-2 text-xs">
+        {leadingControl}
+        {user?.status === "signed-in" && (
+          <img src={user.avatarUrl} alt="" className="size-5 shrink-0 rounded-full" />
+        )}
+        <span className="truncate font-medium">
+          {user?.status === "signed-in" ? (user.name ?? user.login) : "You"}
         </span>
+        <time dateTime={e.createdAt} title={shortDateTime(e.createdAt)} className={muted}>
+          {ago(e.createdAt)}
+        </time>
+        {posted && <span className={muted}>Posted</span>}
+        <div className="flex-1" />
+        {controls}
         <Button
           variant="ghost"
-          title="Edit or delete this comment"
-          className="ml-auto px-1 py-0 opacity-0 group-hover:opacity-100 focus:opacity-100"
+          title={onThreadMenu ? "Thread options" : "Comment options"}
+          className={cn("shrink-0 px-1 py-0", muted)}
           onClick={menu}
         >
           ⋯
         </Button>
-      </span>
-      {e.body}
+      </div>
+      <Prose className="text-sm leading-relaxed">{e.body}</Prose>
     </div>
   );
 }

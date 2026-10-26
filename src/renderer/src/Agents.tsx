@@ -10,13 +10,11 @@ import type { Workspace } from "../../core/workspaces";
 import { Entry, TurnStatus } from "./ChatEntry";
 import { FindBar } from "./FindBar";
 import { chatFindTarget, findSnapshot, refreshFind, registerFindTarget } from "./find";
-import { Button, ToggleButton } from "./components/button";
+import { Button } from "./components/button";
 import {
   ArrowUpIcon,
   ChevronDownIcon,
   GaugeIcon,
-  MessageSquareIcon,
-  PanelLeftIcon,
   PaperclipIcon,
   SparklesIcon,
   SpinnerIcon,
@@ -41,11 +39,9 @@ type Props = {
   onViewThread: (threadId: number) => void;
   // Attached to the composer when it changes (the New View menu's prompts), for the user to send with a note.
   composerPrompt?: { prompt: AttachedPrompt };
-  onShowSidebar?: () => void; // given while the sidebar is hidden: the window buttons are then over this header
-  onHide: () => void; // hides this pane
 };
 
-export function Agents({ workspace, onViewThread, composerPrompt, onShowSidebar, onHide }: Props) {
+export function Agents({ workspace, onViewThread, composerPrompt }: Props) {
   const pane = useAgentPane(workspace.id);
   const patch = (change: Parameters<typeof setAgentPane>[1]) => setAgentPane(workspace.id, change);
   const { picked, newAgent, draft, attached, attachments, attaching } = pane;
@@ -217,34 +213,7 @@ export function Agents({ workspace, onViewThread, composerPrompt, onShowSidebar,
 
   return (
     <>
-      <div
-        className={cn(
-          titleBar,
-          "gap-1 border-b pr-1.5",
-          onShowSidebar ? "pl-20" : "pl-1.5",
-          divider,
-        )}
-      >
-        {onShowSidebar && (
-          <Button
-            variant="ghost"
-            title="Show the sidebar"
-            aria-label="Show the sidebar"
-            className={cn("shrink-0 p-1 text-neutral-500", noDrag)}
-            onClick={onShowSidebar}
-          >
-            <PanelLeftIcon />
-          </Button>
-        )}
-        <ToggleButton
-          on
-          icon
-          title="Hide the agent pane"
-          className={cn("shrink-0", noDrag)}
-          onClick={onHide}
-        >
-          <MessageSquareIcon />
-        </ToggleButton>
+      <div className={cn(titleBar, "gap-1 border-b px-1.5", divider)}>
         <SessionPicker
           sessions={sessions}
           current={session ?? null}
@@ -291,7 +260,7 @@ export function Agents({ workspace, onViewThread, composerPrompt, onShowSidebar,
           const s = e.currentTarget;
           pinned.current = s.scrollHeight - s.scrollTop - s.clientHeight < 40;
         }}
-        className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2"
+        className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4"
       >
         {loading && !running && <div className={cn("m-auto text-xs", muted)}>Loading session…</div>}
         {entries.length === 0 && !running && !loading && (
@@ -351,7 +320,7 @@ export function Agents({ workspace, onViewThread, composerPrompt, onShowSidebar,
         }}
         className={cn(
           dragging && "ring-2 ring-neutral-400",
-          "relative mx-2 mb-2 flex flex-col rounded-xl border bg-white focus-within:border-neutral-400 dark:bg-neutral-900 dark:focus-within:border-neutral-600",
+          "relative mx-3 mb-3 flex flex-col rounded-xl border bg-white focus-within:border-neutral-400 dark:bg-neutral-900 dark:focus-within:border-neutral-600",
           "border-neutral-300 dark:border-neutral-700",
         )}
       >
@@ -398,10 +367,10 @@ export function Agents({ workspace, onViewThread, composerPrompt, onShowSidebar,
           onSubmit={send}
           rows={2}
           placeholder={attached ? "What to focus on (optional)…" : `Ask ${agentNames[agent]}…`}
-          className="px-3 pt-2.5 text-sm"
+          className="px-4 pt-4 text-sm"
         />
         {/* However narrow the pane: the picks shrink and truncate, Working keeps only its spinner, Send and Stop stay. */}
-        <div className="@container flex min-w-0 items-center gap-0.5 px-1.5 pb-1.5">
+        <div className="@container flex min-w-0 items-center gap-1 px-3 pb-3">
           <Button
             variant="ghost"
             className={cn("shrink-0 p-1.5", muted)}
@@ -412,7 +381,7 @@ export function Agents({ workspace, onViewThread, composerPrompt, onShowSidebar,
           >
             <PaperclipIcon />
           </Button>
-          <div className="flex min-w-0 flex-1 items-center gap-0.5">
+          <div className="flex min-w-0 flex-1 items-center gap-1">
             <AgentPickers workspaceId={workspace.id} agent={agent} />
           </div>
           {running && session && (
@@ -575,7 +544,7 @@ function AgentPickers({ workspaceId, agent }: { workspaceId: number; agent: Agen
 function AttachedCard(props: { prompt: AttachedPrompt; onRemove: () => void }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className={cn("mx-2 mt-2 flex flex-col rounded-lg border text-xs", divider)}>
+    <div className={cn("mx-3 mt-3 flex flex-col rounded-xl border text-xs", divider)}>
       <div className="flex items-center gap-1 pt-1 pr-1 pl-2">
         <span className={cn("min-w-0 flex-1 truncate", muted)}>
           View ·{" "}

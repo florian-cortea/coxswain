@@ -6,6 +6,7 @@
 // moved on GitHub; ADR 0030): what the UI refetches. opened: the workspace's worktree was opened or checked again,
 // which changes nothing the UI shows. Not in one: projects, workspaces (the list, or a workspace's row), settings and commands (an agent's slash commands).
 export type CoreEvent =
+  | { workspaceId: number; what: "guide"; override?: import("./guides").GuideOverride }
   | {
       workspaceId: number;
       what:
@@ -16,7 +17,8 @@ export type CoreEvent =
         | "view"
         | "reviewed"
         | "github"
-        | "opened";
+        | "opened"
+        | "guide-state";
     }
   | { what: "projects" | "workspaces" | "settings" | "commands" };
 

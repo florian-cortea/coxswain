@@ -3,6 +3,846 @@
 Where the build stands and what we owe. Newest entry first. Terms are defined in
 [the glossary](context/coxswain.md); decisions are in [the ADRs](adr/).
 
+## 2026-10-26 — Release prepared versions
+
+- Final release checks caught an older queued manual Guide request replaying after a newer one; per-workspace request ordering now discards superseded replays before preparation. Repeated session lifecycle regressions verify the latest override wins.
+- CI/release builds now install Node 26 before pinned pnpm 12.3.4. A frozen-install preflight proved pnpm 10 rejects the current patched-dependency lockfile. CI now runs the test suite too.
+- The release workflow skips an empty version-bump commit when main already contains the requested package version, while still tagging and building that version. This supports shipping the prepared 1.8.0 changes through the standard release workflow.
+
+## 2026-10-26 — Durable Guide Chat sessions
+
+- Guide generation now uses the normal right-sidebar Chat session transport, transcript, permissions, queue and Stop controls. A per-workspace binding persists across restarts; automatic updates continue the same conversation, while manual updates select it and open Chat. Guide generation no longer creates background jobs or disposable tool-free agents.
+- The session reads repository evidence directly and uses publish_guide to submit a complete replacement. Coverage/request/snapshot checks protect atomic publication and reject stale requests. The old Guide remains readable while generating; interactive section rewrites are blocked during a requested update.
+- Updates coalesce while a turn is active, preserving latest manual overrides; explicit agent changes bind a replacement conversation. One-turn model/effort choices restore previous session configuration. Progress links to the session and persisted failures support Retry.
+- Deterministic integration coverage exercises same-session refresh/retry/reopen, custom prompts, explicit provider changes, coalescing, stale/partial publication protection and absence of background Guide jobs. Live dev-app validation regenerated #5767 through its visible Chat session and publish_guide using the saved workspace focus, with no new background job. Historical job rows remain readable.
+
+## 2026-10-26 — Command-wheel diagram zoom
+
+- ⌘ + scroll wheel zooms around the pointer in native and fallback diagram modals through the shared gesture handler. Ordinary wheel panning, pinch/Ctrl-wheel zoom and dragging remain covered by the same regression test.
+
+## 2026-10-26 — Changed-since-review dots
+
+- Guide and Changes file labels share a small accessible blue dot for updated/new files, with a Changed since last review tooltip. It remains until Reviewed acknowledges the current contents, including bulk review. Opening alone or further Guide regeneration does not clear it.
+- Core-owned per-file baselines persist in SQLite settings, initialized from the preceding Guide and updated on Reviewed. Prose-only/unrelated base changes add no dots; manual unreview does not resurrect one. Existing stale reviewed fingerprints provide compatibility for updates predating this feature.
+- Regression coverage checks persistence across a reopened database, repeated publication, file additions, review acknowledgements and manual unreview.
+
+## 2026-10-26 — Preserve review across base updates
+
+- Diff review fingerprints now identify each file’s old and new contents rather than the base commit ID. Guide regeneration, reordered sections and unrelated base updates preserve marks; changes to either side invalidate only that file. Whole-file review stays separate.
+- Existing fingerprints remain readable using persisted Guide/job ranges, with old-side content verification before accepting a legacy mark. Explicit unreview clears compatible old marks too. No review rows or migrations are removed. Compatibility is conservative when a historical base is no longer available.
+- A real-git regression covers old/new fingerprint formats, Guide replacement, base movement, per-file invalidation, unchecking, pinned history and whole-file independence. On a database copy, recovered 101 reviewed files for #5769 and 23 additional marks for #5767.
+
+## 2026-10-26 — Remove Activity UI
+
+- Removed the Activity panel and its native/fallback toolbar buttons, spinner, state and styles. The toolbar gives the freed width back to tabs. Background jobs, retries and persisted history remain; Guide progress stays in its sidebar and comment-summary errors no longer point to the removed panel.
+
+## 2026-10-26 — Auto-update menu position
+
+- Auto-update from Remote sits at the bottom of the Settings dropdown, separated from display and Guide controls.
+
+## 2026-10-26 — Consistent Settings naming
+
+- The tab, dropdown entry and close-tab labels all use Settings.
+
+## 2026-10-26 — Settings text hierarchy
+
+- Settings separates page titles (18), section headings (14), field labels/controls/editors (13), and supporting text (12). Section spacing is consistent, helper copy is shorter and width-limited, and prompt editors use a compact eight-row viewport with comfortable line spacing.
+- Settings reuses Guide/Changes sidebar highlight styling and shares dialog input/button radii and focus treatment.
+- Settings uses palette-based surface differences for navigation, canvas, borderless groups and inset prompt fields, removing nested card outlines while retaining clear input focus.
+- Guides distinguishes Generation from Default Prompts; prompt field descriptions explain when each is used. Settings forms and inputs are left-aligned and capped at 80ch rather than stretching across the window.
+
+## 2026-10-26 — App Settings tab
+
+- App Settings opens beside workspace tabs using both the native and fallback top bars. It reuses the normal window chrome, with no extra Settings title bar or Done button. ⌘, selects one tab; its close action and ⌘W return to the retained workspace.
+- Settings is represented in router history. Switching between workspace and Settings tabs preserves Settings drafts and workspace state, with Guide tracking paused while Settings is active. The standalone screen remains available before adding a project.
+
+## 2026-10-26 — Grouped Settings sections
+
+- Settings uses the shared list-row control, selection colours, pane divider and dense left-aligned navigation in an edge-to-edge sidebar. The right pane uses shared cards and controls.
+- Appearance includes Code Theme; Accounts contains GitHub; Guides includes generation defaults and Default Prompts. Section switches still preserve unsaved prompt edits.
+
+## 2026-10-26 — Settings section navigation
+
+- Settings uses a left section list and a right content pane that fills the remaining width, with independent scrolling. Sections stay mounted when switching so unsaved prompt edits survive navigation within Settings.
+
+## 2026-10-26 — Editable default prompts
+
+- App Settings exposes Guide and Review Comment default writing prompts with explicit Save and Restore Default controls. Overrides persist across restarts in SQLite; restoration removes the override so future built-in changes remain available.
+- Automatic/manual Guide generation and agent Guide tools use the same saved Guide default; thread-to-comment generation uses the saved Review Comment default. Workspace Guide instructions still take precedence, and output format stays app-owned.
+
+## 2026-10-26 — Customized automatic Guides
+
+- Workspace Guide instructions explicitly take precedence over default focus, style and section structure in both manual and automatic generation. Lower-priority changes retain file coverage with brief explanations.
+- Regression coverage changes the worktree after saving custom instructions and verifies the automatic job receives them. Model output remains nondeterministic; this verifies prompt delivery and priority, not compliance by every model.
+
+## 2026-10-26 — Visibility-aware review counts
+
+- Changes tab, category and folder counts share one display rule: reviewed/changed when showing reviewed files, unreviewed only when hiding them. Unknown review data stays unknown, avoiding the loading count flash.
+- Added coverage for shown/hidden, fully reviewed, unequal progress and loading states.
+
+## 2026-10-26 — Folder remaining/total counts
+
+- Changes tree folders show unreviewed/total descendant counts beside their names, using the same category-scoped children as the folder Reviewed checkbox, including filtered and collapsed children. Styling matches category counts.
+
+## 2026-10-26 — Update Guide from any workspace tab
+
+- The top Settings menu enables Update Guide whenever a workspace is open, including Changes, Files and PR overview. Viewing the Guide is no longer a prerequisite.
+
+## 2026-10-26 — Persist bot identity for immediate filtering
+
+- Added an append-only migration caching GitHub bot identity on mirrored review entries. Sync refreshes actor identity for roots and replies even when comment text has not changed; old rows remain unknown until synced.
+- Guide and Changes author filtering use cached identities immediately, including suffixless bot logins, without waiting for live PR details. Explicit user inclusion still wins.
+- Regression coverage checks persisted root/reply identities, metadata-only refresh idempotence and offline filtering of suffixless bots. Typecheck, all 91 tests, lint, formatting and build pass. Migrated a scratch copy (schema 18 → 19, preserving all 261 entries) and verified the running app caches greptile-apps/datadog-official as bots. The installed database remains at schema 18; the dev app currently runs against /tmp/coxswain-bot-cache-check.
+
+## 2026-10-26 — Conflict status glyph and neutral tab titles
+
+- Merge conflicts use a filled orange square with an exclamation mark in native and fallback workspace tabs. Reverted approval title colouring; approval remains a filled green checkbox.
+
+## 2026-10-26 — Workspace PR status icon colours
+
+- Workspace-tab PR icons are green when open, a filled green checkbox when approved, purple when merged and orange for merge conflicts or failing head-commit checks. Conflicts/CI failures override approval for open PRs; closed PRs retain red. Native and fallback tabs share one tested colour policy.
+- The batched core PR-title read also returns approval, mergeability and head check-rollup state, using the existing GitHub refresh path.
+
+## 2026-10-26 — Stable Changes remaining count
+
+- Keep the live review marks subscribed while Guide reads its pinned range, so the Changes count is ready on tab switches. Unknown review state no longer falls back to a full unreviewed count; regression coverage checks loading, partial and fully reviewed counts.
+
+## 2026-10-26 — Softer active-file reveal motion
+
+- Active-file following uses elapsed-time critical damping with gentle acceleration and retained velocity when retargeting. Reading updates remain isolated from React row/canvas rendering; animation frames perform only a fractional scroll write, without layout reads.
+- Regression coverage checks gentle starts, target changes without restarting, settling, manual cancellation, Reduce Motion and equal positions at 60/120 Hz.
+
+## 2026-10-26 — Restore animated active-file following
+
+- Removed continuous canvas-to-sidebar offset mapping, which jumped without the requested reveal animation. Auto-follow again smoothly reveals the active file row (section title fallback when filtered out), only when it is outside the sidebar viewport.
+- Retained rendering isolation: reading-marker changes update highlights imperatively without rerendering the app, canvas or sidebar file/thread rows. Equal markers do not restart scrolling; manual sidebar input cancels it.
+- Regression coverage verifies native smooth animation for off-screen rows, no movement for visible rows and immediate Reduce Motion behavior.
+
+## 2026-10-26 — Continuous Guide-to-sidebar progress
+
+- Replaced boundary-triggered sidebar reveals with a continuous mapping of canvas section progress into the corresponding sidebar section. No second animation trails the main scroll, and adjacent section mappings meet without jumps.
+- Sidebar reading updates no longer rerender its full file/thread list. They update marker attributes only when section/file changes, and apply the progress offset directly. Manual sidebar scrolling is unaffected until the main canvas moves again.
+- Regression coverage checks smooth intra-section progression, continuity at section boundaries and viewport clamping.
+
+## 2026-10-26 — Native Guide follow scrolling
+
+- Replaced the JavaScript animation-frame follower with Chromium’s native smooth scroller. New reading markers queue only the latest destination until scrollend, so an active native animation is never repeatedly restarted.
+- Manual sidebar input freezes native motion and clears the queued destination; Reduce Motion remains immediate. Regression coverage checks native delegation, queued-target replacement, completion, cancellation, visible rows and detached destinations.
+
+## 2026-10-26 — Isolate Guide reading updates
+
+- A local Chromium trace of #5769 showed React tasks of roughly 33–46 ms near scroll events. Guide reading markers previously updated top-level App state, rerendering retained canvas content as the current section/file advanced.
+- Reading position now lives in a per-window transient store subscribed to by the Guide sidebar alone. Equal markers keep the same snapshot and do not notify; the canvas no longer rerenders for reading-marker changes. Added subscriber/snapshot regression coverage.
+- Replayed the same two UI scroll actions in #5769 before/after: three scroll events in each trace. Maximum FunctionCall duration within 150 ms of scroll events fell from 45.64 ms to 12.87 ms; callbacks over 16 ms fell from three to zero. This is a small automated sample, not a guarantee for all trackpad gestures. Typecheck, all 88 tests, lint, formatting and build pass.
+
+## 2026-10-26 — Smooth Guide follow timing
+
+- Guide sidebar easing uses elapsed frame time with retained subpixel position instead of frame-count interpolation and forced one-pixel steps. Animation pace is consistent across refresh rates and its final motion no longer stair-steps.
+- Added a regression test comparing 60/120 Hz positions at the same elapsed time; it failed with the old animation and passes with elapsed-time easing.
+
+## 2026-10-26 — Continuous Guide sidebar following
+
+- Guide sidebar following retargets one animation instead of repeatedly restarting native smooth scroll when reading markers advance quickly, especially in short sections with reviewed cards hidden. Manual sidebar input cancels the animation, as do covering or unmounting Guide; Reduce Motion stays immediate.
+- Regression coverage drives rapid marker updates through one animation, checks the final reading destination and verifies cancellation and reduced-motion behavior.
+
+## 2026-10-26 — Center the reviewed canvas empty state
+
+- The Changes canvas all-reviewed state matches the sidebar: vertically/horizontally centered muted text above the shared bordered Show Reviewed Files button. It fills the available body rather than occupying a top-left row inside the diff virtualizer.
+
+## 2026-10-26 — Quiet approvals without comments
+
+- Submit Review hides the No open comment threads notice when Approve is selected, so approvals without comments do not show the empty-state warning.
+
+## 2026-10-26 — Count remaining review files
+
+- Changes reports unreviewed files; category file counts show unreviewed/total files. Category counts sit directly beside the category name with a 1 px downward optical alignment, with fixed-width diff totals and the Reviewed checkbox aligned on the right.
+
+## 2026-10-26 — Omit empty change categories
+
+- Changes hides Implementation, Tests and Generated sections when they have no visible files, including categories emptied by sidebar filters.
+
+## 2026-10-26 — Folder review controls
+
+- Changes tree folder rows have the shared Reviewed checkbox with unchecked, partial and checked states. Toggling marks/unmarks all changed descendants in the folder’s category, including filtered and collapsed children, without toggling expansion.
+
+## 2026-10-26 — Match Changes canvas and sidebar ordering
+
+- Changes canvas uses Pierre’s file traversal, shared with the sidebar’s row identities, instead of Git’s path order. It follows Tree/List layout and Implementation/Tests/Generated grouping. Guide sections keep their authored order.
+- Regression coverage compares every canvas path to the sidebar model in all four layout/grouping combinations, including natural filenames and duplicate basenames.
+
+## 2026-10-26 — Reliable hide-reviewed canvas control
+
+- Settings menu dismissal waits one event turn so its close callback cannot swallow a selected checkbox action. Regression coverage checks selection-before-dismissal ordering and dismissal without selection.
+- Hide Reviewed Files clears the old selection exception. Explicit sidebar navigation temporarily reveals only the requested reviewed card without changing the hide setting; selecting another file or reviewing it again removes that exception.
+- Typecheck, all 84 tests, lint, formatting and build pass. The updated Settings item is present in the running app; end-to-end interaction verification was interrupted by concurrent user interaction.
+
+## 2026-10-26 — Per-workspace remote updates
+
+- The top Settings dropdown has Auto-update from Remote, on by default and persisted independently for each workspace in SQLite settings. Clean checkouts follow force-pushes and remote rewinds without creating recovery branches.
+- Local edits, untracked files and unpushed commits disable auto-update before fetching. The core watcher detects local work between remote checks, and the updater checks again for work made during a fetch. Cleaning up does not re-enable it automatically.
+- Regression coverage uses real Git histories for force-pushes, remote rewinds, local commits, untracked edits, per-workspace isolation and edits/commits made during fetching. Typecheck, all 82 tests, lint, formatting and build pass; verified the option in the running app’s top Settings dropdown.
+
+## 2026-10-26 — Restore native workspace close buttons
+
+- Moved required dependency patches and build permissions from the retired package.json pnpm field into pnpm-workspace.yaml. Dependency restores with pnpm 12 now preserve the native hover close controls and the Claude adapter patch.
+- Corrected cumulative new-file offsets in the native patch so the current package manager accepts it. Rebuilt the native bridge with hover actions enabled.
+
+## 2026-10-26 — Scope menus to their surfaces
+
+- Sidebar menus now contain only sidebar filters and file-list layout/grouping. Section Descriptions and Update Guide moved to the top Settings dropdown alongside a separate Hide Reviewed Files option. Sidebar reviewed-file filtering no longer changes the canvas.
+- Typecheck, all 81 tests, lint, formatting and build pass. Verified the relocated controls in the development app’s Settings dropdown. Closed older development launchers and app processes, leaving the latest instance.
+
+## 2026-10-26 — Guide description placement
+
+- The top Settings dropdown switches section descriptions between Beside Files (default, responsive columns) and Above Files (stacked at every width). Above Files keeps descriptions in normal scrolling flow and gives file cards the canvas width. Like other display options, the choice resets on restart; persist display preferences together in SQLite.
+- Verified Above Files in the running development app. Typecheck, all 81 tests, lint, formatting and build pass.
+
+## 2026-10-26 — Safe window-close cleanup
+
+- Window-button alignment retains its web contents reference before closure; cleanup no longer reads properties of a destroyed BrowserWindow, fixing the main-process “Object has been destroyed” exception on close.
+- Regression test reproduces Electron's throwing property getter after destruction, verifies close succeeds and listeners are released, and passes alongside the existing layout lifecycle test. Dependencies restored: typecheck, all 81 tests, lint, formatting and build now pass. The installed app still needs repackaging to receive this fix.
+
+## 2026-10-26 — Hide reviewed cards and advance review
+
+- Hide Reviewed Files now removes complete file cards in both Changes and Guide; the Guide menu also updates the canvas. Guide explanations stay visible.
+- Marking an individual file Reviewed scrolls the next unreviewed card below the toolbar, skipping reviewed cards. Explicit navigation can still reveal a reviewed file.
+- Validation is incomplete: this checkout lacks dependency executables and package-manager dependency verification cannot reach the registry. Typecheck, lint, formatting, build and running-app checks remain pending.
+
+## 2026-10-25 — Align category diff totals
+
+- Implementation, Tests and Generated diff totals now align with file-row totals at the sidebar’s right edge, before the shared Reviewed checkbox. Category file counts stay beside the heading.
+
+## 2026-10-25 — Stable Changes category disclosures
+
+- Category and folder chevrons share a fixed 16-point slot and common glyph geometry in both states. Titles keep the same horizontal position when toggled, and chevron tips align with the tree-line axis. Tree indentation and connector offsets share explicit CSS metrics. Verified expanded/collapsed category positions and nested connectors in the running app.
+
+## 2026-10-25 — Review defaults, category review controls and window chrome
+
+- Claude Code/Opus 5.5 is the default for Guides and new Claude review conversations. Guide defaults no longer inherit retired summary preferences; explicit Guide settings remain supported. Set the running packaged app’s Guide model to Opus 5.5.
+- Implementation, Tests and Generated headers use the same tri-state Reviewed checkbox as Guide sections and file rows. Category actions review/unreview every changed file in that category, including filtered files, without changing its expansion.
+- The default Guide prompt ends implementation sections with a separate Tests section, then a separate Generated section, omitting empty groups. Automatic generation supplies group metadata from the shared Changes classifier. Used writing-for-agents for the prompt update and added prompt regression assertions.
+- macOS traffic lights reapply their centered 44-point-bar inset after native window layout, resize/restore/maximize/focus and renderer reload. Coalesced callbacks skip fullscreen and release on close; lifecycle regression coverage checks these cases.
+- Verified category bulk unreview, partial state and bulk review in an isolated database copy. Typecheck, lint and all 80 tests pass. Rebuilt 1.8.0 artifacts under dist/1.8.0 to leave the earlier running bundle intact.
+
+## 2026-10-25 — Version 1.8.0 bundle
+
+- Bumped the app version to 1.8.0 for a local macOS Apple Silicon bundle and DMG/ZIP artifacts. Packaging uses the existing unsigned release configuration; no release is published.
+
+## 2026-10-25 — Stable Guide picker loading layout
+
+- Moved model/effort loading into each picker’s reserved chevron slot as a small shared spinner. Removed the conditional loading row, so discovery does not grow or shrink Update Guide/Settings. Busy state remains accessible through the button and status label.
+
+## 2026-10-25 — Anchor Submit Review to the main panel
+
+- Moved the floating review action into the main canvas panel, outside scrolling content. Its right inset now follows the panel when Chat opens, closes or resizes, instead of covering the right sidebar. The native glass button and modal behavior remain shared. Verified placement with Chat open in the running app.
+
+## 2026-10-25 — Guide agent override
+
+- Update Guide now includes a Claude Code/Codex switch alongside model and effort, with a reset to App Settings. Switching agent clears incompatible overrides and reads that agent’s saved Guide defaults without changing settings or Chat.
+- The typed one-update override carries the selected agent through the existing core event/job runner. Regression checks cover execution on the alternate agent, later jobs returning to the configured agent, and read-only lookup of per-agent defaults.
+- Verified switching to Codex, loading its model/effort options and resetting to the app default in the running dialog, without starting generation. Format, typecheck, lint, build and all 79 tests pass.
+
+## 2026-10-25 — Guide model and effort overrides
+
+- Settings → Guides now remembers model and effort defaults per agent. Update Guide reuses shared native pickers for one-update overrides, with separate App default and Agent default choices. Model changes reset effort; effort choices are discovered for the selected model in a temporary session without changing Chat.
+- Model discovery returns as soon as choices are ready instead of waiting for adapter session teardown. Results deduplicate/cache for five minutes, the model catalog stays usable while effort loads, and errors are retryable.
+- Overrides travel through the typed core event and existing background job runner, survive queued manual requests and retries, and do not change automatic defaults. The one-shot agent applies model before effort and reports unsupported explicit effort rather than silently ignoring it. Added regression coverage for override isolation, explicit agent defaults, inherited app defaults and persisted effort per agent.
+- Verified model/effort controls in App Settings and the native effort menu in Update Guide; selected and dismissed a one-update override without generating. Format, typecheck, lint, build and all 79 tests pass.
+
+## 2026-10-25 — Keep sidebar position when opening PR overview
+
+- Guide tracking stops while PR overview is open. Navigation disconnects its resize observer and cancels pending reading-marker timers; detached canvases cannot update the current section/file. The sidebar suspends automatic reveal during overview, preserving the current highlight and scroll position.
+
+## 2026-10-25 — Visible review verdicts
+
+- Submit Review always shows Comment, Approve and Request Changes for a PR, even without draft threads. On your own PR the latter two remain visible but disabled, with an explanation, rather than disappearing. Other authors’ PRs retain the existing verdict submission flow.
+
+## 2026-10-25 — Shared modal styling
+
+- Shared dialogs use an elevated theme-aware surface, softer backdrop, 20-point outer corners, clearer headings and muted descriptions. Fields use the shared 12-point card corners and a subtle focus ring. Keyboard focus stays inside the modal and returns on dismissal.
+- Update Guide has a labeled instruction field, persistent-instruction hint and a separate footer with a primary update action; multiline input uses Command-Enter to submit. Submit Review gets a wider layout, inset thread cards, a dedicated summary/verdict area and a consistent action footer. Posting/confirmation behavior is unchanged.
+- Checked both dialogs in the running app, including keyboard wrap and Escape dismissal, without submitting a review or regenerating the Guide. Format, typecheck, lint, build and all 79 tests pass.
+
+## 2026-10-25 — Review navigation, group totals and PR overview styling
+
+- Changes/Guide file picks explicitly target their review pane. The retained Files tree only receives its active selection and cannot open files while hidden; programmatic reveal does not invoke navigation, and Pierre callbacks read the latest handler. Verified Changes and Guide picks staying in their panes.
+- Implementation/Tests/Generated headings show summed added/deleted lines beside their file counts. Verified grouped tree/list modes, collapsing groups and disabling grouping through the native menu.
+- The PR overview uses the current canvas/card surfaces, 12-point corners, roomier spacing, subdued status pills and clearer description/conversation/checks/people hierarchy. It uses the same shared Prose/Mermaid renderer and expand interaction as Guide, including diagram card styling.
+- Fixed blocked PR images: HTTPS image hosts are allowed by the image-only CSP; script/default policy stays unchanged. Repository-relative PR images use the existing core readFileAt at the PR head (including private repositories), GitHub blob URLs become raw-image URLs, and unavailable images show a quiet labeled fallback. All five distinct public Greptile badge paths found in PR #5834 returned HTTP 200 SVGs; PR #5827 includes a Mermaid diagram using the shared renderer. Added URL/path resolution regression tests.
+- Visually checked the PR overview, loaded Greptile badges and Mermaid diagram in the running app. Source init/frontmatter themes cannot override the shared app palette, fixing pale text on pale boxes; added a regression test across light/dark/Soft Dark. Inline diagrams have a bounded height and retain the expand preview.
+- Checkout launches use a cached, separately named macOS development bundle so the Dock identifies coxswain rather than Electron. The dependency runtime is left untouched; the copy is rebuilt when Electron or the bundle recipe changes.
+
+## 2026-10-25 — Group Changes by implementation, tests and generated files
+
+- Changes defaults to collapsible Implementation, Tests and Generated groups with file counts in both tree and list layouts. Each reuses the Pierre folder model and shared file/thread rows, under one scrollbar; keyboard navigation crosses group boundaries. Existing filters apply before grouping, and group expansion stays when returning to Changes.
+- Added a native dots-menu checkbox to disable grouping independently of Tree/List. Like the existing layout preference, this is per-window state.
+- Path conventions classify test directories/filenames and common generated directories/suffixes, snapshots and lockfiles; generated takes precedence. This is presentation over the core’s changed paths, with no file reads. Regression tests cover cross-language test conventions, generated test artifacts and ordinary source/docs/configuration.
+
+## 2026-10-25 — Whole-file editor tabs and stable inline drafts
+
+- Files now uses closable file tabs above an edge-to-edge Pierre file canvas, with no card header, border or outer margin. Tree, Open Quickly and code navigation share tab opening, preserving revision identity, neighbor selection after close and last-file restoration after Guide/Changes. Tabs use shared controls/language icons, native full-path tooltips, keyboard navigation and middle-click close. Router-owned tabs remain per-window; no new storage.
+- Files has its own retained canvas surface, so it no longer replaces Changes geometry or renders a hidden Guide. File reads can start without waiting for Guide/diff/review queries. Added tests for duplicate/revision tabs, pane restoration and active/inactive/last-tab closure.
+- Draft input focus uses preventScroll, keeping the chosen line in place as the annotation opens beneath it. Verified insertion on line 318 in Changes without moving that line; dismissed the empty test draft without posting.
+- Checked opening two files, closing the active tab and returning through Guide in the running app.
+
+## 2026-10-25 — Keep native workspace chrome stable during page zoom
+
+- Inset the draft comment close control inside the textarea so its hover background cannot cover the rounded field border; text reserves room for the control.
+- Native workspace controls retain their window-point sizes while ⌘+/⌘− zoom review content. Counter-zoomed DOM anchors keep the tabs, action groups and traffic-light clearance aligned; sidebar and canvas insets track the fixed native bar height. Thread navigation measures the actual bar clearance.
+- Verified zoom out, zoom in and reset in the running app. No toolkit fork or additional persistence is needed.
+
+## 2026-10-25 — Align review disclosure controls
+
+- Paired context chevrons have more vertical separation without stretching their shapes; the file-header chevron compensates for its one-pixel border inset.
+- File disclosures brighten only the chevron on hover, matching the unchanged-lines controls without a button background.
+- Moved thread expand/collapse controls before the author or collapsed summary, keeping resolve/options on the right. File-header and unchanged-lines chevrons now share their 14-point size and line-number center; the gutter is measured from Pierre’s rendered number column.
+
+## 2026-10-25 — Shared file/thread groups and filters in Changes
+
+- Folder disclosure buttons explicitly align their contents left, so label length cannot shift the apparent tree indentation. Checked the nested Changes hierarchy in the running app.
+- Extracted SidebarFileThreads for Guide and Changes: the same language icon, optional folder hint, diff totals, Reviewed checkbox and two-line avatar/thread pills. Changes nests thread pills below files, preserves raw-diff navigation, and includes file-anchored Guide threads with their replies; section-only discussions remain in Guide.
+- Both dots menus use one native filter-item builder and one visibility policy for reviewed files, resolved threads, agent/comment kinds and authors, including bot defaults. Changes keeps Tree/List choices. Folder suffixes are suppressed in tree rows; ambiguous flat-list names retain them.
+- Pierre’s public model supplies Changes hierarchy, ordering, flattened directories, folder expansion and keyboard focus; shared React groups render variable-height thread rows. Full Files trees retain their existing virtualized rendering and worker preparation. Debt: Changes groups currently render the model’s visible projection without windowing; measured group-height virtualization is the upgrade for very large diffs (ponytail in ChangesNavigator).
+- Added shared thread-filter regression coverage. Existing review and navigation tests remain.
+
+## 2026-10-25 — Keep Guide/Changes geometry across tab switches
+
+- The primary Guide/Changes flicker came from recreating Pierre virtualizers and briefly drawing empty code bodies. Retain both measured/rendered canvases within the active workspace, with inactive surfaces invisible and inert while preserving layout size. First visits stage pending visible code rendering, bounded to 30 frames. Workspace changes release the two surfaces.
+- Scoped section/file/thread anchors to the requested canvas and excluded invisible surfaces from Find, preventing duplicate-id navigation into a retained tab. Scroll capture from inactive surfaces is suppressed. Collapsed reviewed cards render headers immediately without triggering offscreen file reads. Added an anchor-scoping regression.
+- Working/Queued/permission/error status now lives inside the inset Agent response card, even before the first output. Prose threads and drafts lose extra horizontal card margins; unplaced text threads lose their extra 24-point side padding. Code-line threads keep their existing inset.
+
+## 2026-10-25 — Off-thread tree ordering and lighter scroll frames
+
+- Files trees above 1,000 paths prepare Pierre’s own ordering in one renderer worker, then use its public presorted-input API. Preparation is query-cached by immutable source-path identity, without private serialization or custom sorting. Worker errors fall back to regular construction. An existing tree stays visible while changed paths prepare, avoiding a new background-refresh blank. A local synthetic 18,000-path check measured live-model construction at 46 ms ordinarily versus 8 ms with presorted input; preparation time is moved off the UI thread, not eliminated.
+- Verified the large Files tree in the running app and added an equivalence test for ordering, flattening and visible rows after the worker data boundary.
+- Scroll offsets save cheaply on every event; DOM anchor/reading measurements run at most once per frame and are cancelled across pane/screen navigation. Reused viewport measurements remove repeated layout reads. Guide sections no longer rebuild when only review visibility changes. The shared language-icon sprite mounts once per window instead of on each Guide return.
+
+## 2026-10-25 — Remove warm-switch placeholder flashes
+
+- Reopened stacked diff cards read cached sides on their first render rather than waiting for IntersectionObserver and briefly substituting an estimated-height placeholder. Query-owned immutable file contents keep stable Pierre highlight/diff cache keys across remounts; edits and filename/language changes get fresh identities through a weak cache.
+- Workspace switches prepare a saved Guide’s range, entries, review marks and first cards before replacing the current canvas. This does not wait for the GitHub check, does not run model work, and skips live Changes/Files destinations. Latest-request guards prevent a slower earlier switch from winning after a newer selection or close. Existing query freshness and invalidation rules apply.
+- Regression coverage checks highlight cache identity after edits/renames and preparation without a network/worktree wait or repeated reads. Large uncached files still load lazily.
+
+## 2026-10-25 — Recorded interaction performance and navigation continuity
+
+- Recorded startup, Guide/Changes/Files transitions, a second-workspace open and cached return using opt-in Electron Chromium traces, development React Profiler measures and core-call measures. Verified file-folder expansion across tab returns and Activity open/Escape dismissal in the running app.
+- Event-owned local queries reuse cache until a core event; GitHub refresh also invalidates derived ranges after a possible fast-forward. Avoid rewriting tab-open preferences when selecting an already-open tab. Code-theme reads fell 8→1, comment-setting reads 6→1, changed-file reads 10→6 in comparable recordings; first file enumeration fell 146→118 ms. A final cold-start change reads the saved Guide’s immutable range before GitHub finishes: canvas readiness on the same workspace improved 3,161→146 ms in the recorded development runs. Live Changes still waits for the real worktree check. The first large Pierre tree model still costs a frame; this pass does not claim that eliminated.
+- Replaced per-file synchronous existence checks with bulk git listing/deletion queries. Visited Changes/Files models stay mounted only within the current workspace. Reused visible-path filtering uses a Set and memoization.
+- Canvas positions are kept per surface and restored before paint, including a canvas remounted after Settings. Restore retries cancel on user input and navigation, with regression tests; the Guide reading observer reconnects after Settings. Added cache-invalidation and untracked/deleted-file coverage.
+- Local diagnostics: run dev with COXSWAIN_TRACE_PATH set to an absolute JSON path; SIGUSR2 saves the trace (PID in the adjacent .pid file). Packaged apps ignore it. Trace files remain local and are not checked in. Development performance marks/profiling are omitted from production rendering.
+
+## 2026-10-25 — One Guide, updated in place
+
+- Removed the duplicate File Sidebar submenu from toolbar Settings; its dots menu owns tree/list choices. The enabled GitHub logo uses explicit appearance-aware contrast instead of the native shape’s dim default fill.
+- Submit Review is a floating bottom-right button, using native glass where available and the shared primary button elsewhere. It shows the pending count and yields to dialogs. PR overview has a dedicated toolbar button, and the old Review menu is removed. Closed workspaces reopen through the command palette; duplicate diff/range/Guide choices are removed. Commits/Turns in Changes owns range navigation. The external PR button uses the GitHub mark in both native and HTML toolbars.
+- Each workspace exposes one Guide. Automatic and manual publication reuse its stored identity atomically; no new numbered Guide is created. Previous content remains readable until a successful replacement, and stale runs cannot overwrite a newer request.
+- Update Guide opens a shared dialog with optional instructions. Core SQLite keeps them per workspace for future automatic updates; blank instructions restore the default. Removed the saved View list, New View/removal actions, and saved prompt library from Settings and IPC. Agent tools now use start_guide/read_guide against the same document.
+- Existing latest Guide records are adopted. Legacy rows and historic entry anchors are retained without a destructive migration; internal storage types keep their existing names. Guide scroll restoration also follows replacement ranges under the same identity.
+
+## 2026-10-25 — Matching Activity spinners and Changes list inset
+
+- The native toolbar now draws the same thin 14-point, rounded 80% arc as the Activity list, at one rotation per second, through SwiftUI TimelineView. Replaces the system progress glyph while retaining the native toolbar button.
+- Changes in list mode has a 16-point left inset; tree mode retains its connector geometry.
+
+## 2026-10-25 — Quieter Activity indicator and nonmodal toolbar
+
+- Activity uses the native mini spinner in a 14-point frame at muted opacity, keeping its visual weight alongside the toolbar symbols. The pinned native bridge applies SwiftUI’s mini control size to indeterminate progress.
+- Opening Activity leaves the toolbar enabled, including the Activity button to close the list; modal dialogs still disable native controls.
+
+## 2026-10-25 — Dedicated Activity toolbar control and card list
+
+- Activity has its own native top-bar button, using an indeterminate SwiftUI progress indicator while any background job runs; the web toolbar mirrors it. Removed the duplicate review-menu action and reserved the added chrome width.
+- Activity opens below the bar with the app’s 12-point corners, hairline card borders and surfaces, compact header actions, muted time/model details and running count. Running/failed rows retain progress and Stop; completed rows stay quiet. Close, Escape and outside clicks dismiss it.
+
+## 2026-10-25 — Configurable Guides, without file summaries
+
+- Settings has a dedicated Guides agent/model picker using installed-agent model discovery. Choices persist per agent, inherit existing model preferences initially, and are passed explicitly to the shared job runner. Tests cover persistence, per-agent recall, legacy defaults and the actual model used by guide jobs.
+- The Guide dots menu starts with Update Guide. It requests forced regeneration through the existing core event/job flow, with progress in the sidebar and old content retained until publication.
+- Removed speculative file-summary generation, cache reads/writes, settings, coverage UI and the file_summaries agent tool. Views list changed paths/status/counts and read diffs directly; list_changed_files retains pagination without model work. Guides consume diff evidence directly. Comment summaries and the shared job runner remain.
+- Historical job rows and immutable migrations remain for compatibility; the unused cache table is no longer part of the active typed schema. No new migration or deletion of user history.
+
+## 2026-10-25 — Shared sidebar labels and highlight rendering
+
+- Changes diff totals keep a nonbreaking space between additions and deletions so Pierre’s separate text spans cannot collapse the gap; deletion-only counts have no leading spacer.
+- Guide and Changes/Files now use the same React filename/path label component and row-highlight stylesheet. Transparent native ellipsis replaces Pierre’s painted truncation masks, including flattened directory chains, preventing rectangular gaps over rounded hover/selection surfaces.
+- Pierre indentation uses one uniform step, with ancestor stems centered beneath their folder disclosure arrows instead of accumulating independent padding/gap offsets.
+- Guide and Pierre indentation now share one connector stylesheet, including identical 12-point slants and the curved last-branch mask; the final join no longer extends farther than intermediate joins.
+- Pierre still owns virtualization, folding, selection and keyboard navigation. Its existing mounted-row bridge exposes label hosts for React portals; native path tooltips, muted status colors, duplicate-name folder hints and review inputs remain. Debt: replace the bridge with supported row slots when Pierre exposes them.
+
+## 2026-10-25 — Clear hull without overlapping shafts
+
+- Trimmed each paddle’s vector shaft to end just 14 px inside the curved hull boundary, allowing a short glass overlap. The shaft tips have smooth rounded caps. The glass boat no longer shows three overlapping chevrons through its center; paddle shape, centered arrangement and native materials remain. The previous source is retained under `resources/icon-concepts/clean-hull/`.
+- Regenerated production PNG/ICNS exports through Icon Composer. Verified 16–128 px previews and the packaged native About panel with scratch data. Typecheck, all 63 tests, lint, formatting and build pass.
+
+## 2026-10-25 — Vertically centered paddles
+
+- Moved the complete paddle arrangement down 72.847 px in the Composer canvas so its upper and lower silhouette bounds balance around the hull’s vertical center. The hull, paddle shapes, row spacing and materials are preserved. Regenerated PNG/ICNS exports and compared 16–128 px previews; the previous source is retained under `resources/icon-concepts/centered-paddles/`.
+
+## 2026-10-25 — Clearer app icon at small sizes
+
+- The glass crew has a 12% wider oar spread, thicker shafts and a slightly wider, shorter hull so its silhouette holds together at 16–32 px. Rounded asymmetric blades, 45-degree axes and the saved glass materials remain.
+- Regenerated the production PNG and all ICNS sizes through Icon Composer. The tile footprint and Dock padding stay the same. Before/after previews and the previous editable source are retained in `resources/icon-concepts/small-size/`.
+- Verified at 16, 24, 32, 48, 64 and 128 px and in the packaged native About panel using scratch data. Typecheck, all 63 tests, lint, formatting and build pass; the packaged ICNS matches the export.
+
+## 2026-10-25 — Shared sidebar status colors and highlights
+
+- Sidebar status colors blend 80% of the theme color with 20% label gray, softening filenames/icons consistently without reducing text opacity.
+- Guide and Changes/Files share the selected code theme’s status palette for filenames and language icons: added, modified (including renames), and deleted. Optional folder hints remain muted.
+- File rows share Guide’s 12-point filename size, smaller 11-point metadata, 14-point icons and 28-point height.
+- Pierre rows now use Guide’s neutral hover/selection surfaces, 12-point corners and inset highlights with the same 3-point gap, preserving independent native review controls and keyboard navigation.
+
+## 2026-10-25 — Consistent file navigation and review disclosure
+
+- Flat Changes rows keep filenames in a single-line, shrinkable ellipsis label; duplicate-name folder hints shrink separately, preserving diff totals and review controls at narrow widths.
+- Changes/Files retain Pierre folding and keyboard navigation while matching Guide’s language icons, filename hierarchy, optional middle-truncated duplicate-name folders, diff totals, rounded hover states, thin tree connectors and right-aligned native review checkboxes. Review controls do not navigate. Full-path titles also cover the tree’s actual truncated text fragments before hover.
+- Reviewing files or whole sections closes their cards even after a previous sidebar reveal. A subsequent selection reopens them; small header disclosures expand/collapse independently of review state. Resolving threads overrides earlier reveals; selecting the same resolved thread again reopens its contents without changing resolution, with matching header disclosures. File-header disclosure preserves its viewport position through virtualized height changes and cancels on user scroll/input.
+- Debt: Pierre currently accepts only text/icon row decorations. A small mounted-row bridge adds native review inputs and tooltip labels; replace with interactive row slots when supported upstream.
+
+## 2026-10-25 — Native full-path tooltips
+
+- File labels in Guide and Changes/Files expose the original full path through Electron’s standard native tooltip handling, with the system hover delay. Pierre’s shadow-tree rows receive titles before hover, refreshed on row creation/recycling, including flat lists; filename text has its own explicit title; status decorations retain their review/thread information after the path. No custom tooltip overlay or timer.
+
+## 2026-10-25 — Light-mode sidebar contrast
+
+- Guide tree stems, slanted connectors and curved final joins use a stronger neutral color in light appearance. Section, file and thread hover backgrounds also have more contrast. Shared Guide color tokens retain existing dark-mode colors and row geometry.
+
+## 2026-10-24 — Automatic guides and sidebar continuity
+
+- Opening/checking a workspace generates a concise guide through the existing background job engine; PR/worktree events refresh changed ranges. Matching complete guides are reused. Runs coalesce, newer ranges supersede older ones, and complete replacement views publish atomically while previous views remain available. Activity records the jobs; the Guide sidebar shows generating/updating status, failures and Retry. Uses the configured background agent/model. No database migration.
+- Automatic guides run even if speculative file summaries are disabled; the existing Ahead preference continues to govern only those summaries.
+- Guide instructions now ask for short thematic explanations beside code cards, without snippets, per-line narration or a review report. Automatic output is validated for exact file coverage before publication.
+- Returning to Guide restores its last scroll position and reading highlight immediately, without transient highlight flicker. Background publication preserves the reading position and does not interrupt Changes or Files.
+- Closed workspace tabs persist across restarts in per-workspace SQLite settings, with reopen and cross-window updates. No workspace deletion or migration.
+- Left sidebar defaults open at 336 points; Commits/Turns defaults collapsed and only appears in Changes. Guide shows reviewed files and resolved threads by default, with Hide options. Human authors start visible and bots hidden using GitHub actor metadata; author-menu choices can include either.
+- Tests cover generation/reuse/update, retained guides on failure, retry, stale-run suppression, output validation, author defaults and closed-tab persistence. Debt: automatic guide context is bounded to 1,800 diff lines, 160 per file, supplemented by cached summaries; a repository-reading job is the upgrade path for very large changes.
+
+## 2026-10-24 — Guide navigation and nested threads
+
+- Guide is now the first/default Navigator tab, ahead of Changes and Files. Left-aligned rows list numbered titles; file and added/deleted line totals appear only for sections with files. Threads nest beneath their section and group by filename in the same scrollable list. Compact two-line thread rows show clean text previews and status and one total reply count without line numbers or colored dots. Show Resolved Threads is a native checkbox that adds resolved threads alongside open ones, rather than switching between separate lists. Removed the obsolete thread-list empty message and show-resolved button now that threads are nested in Guide. Section totals sit closer to the heading. Selecting a resolved thread expands it without reopening, including prose threads, with unmatched threads under Other threads and the native filter menu in the tab header. Changes opens the raw diff. The right sidebar holds only Chat, without an extra Chat header. Picking a section scrolls to it below the glass toolbar; picking the tab opens the newest view when needed.
+- Guide now defaults to all unreviewed changed files. Its options independently include reviewed files or restrict the list to files with matching threads, alongside resolved threads, agent threads and comments. File cards reuse Pierre’s language-specific file icons, filename, muted path and per-file diff totals, with deleted files struck through. Thread previews include author avatars with a person icon fallback. An Authors submenu filters thread authors independently and offers Show All Authors. These display choices last for the window, like other Navigator settings.
+- Thread pills align with the file highlight’s left edge, removing their extra left inset; 2-point vertical wrapper padding keeps a small gap from the file highlight.
+- Unchecked sidebar checkboxes are quieter, strengthening on hover/focus while checked and mixed states retain full contrast.
+- Guide files and sections use right-aligned native Reviewed checkboxes in a shared column. File names navigate independently of review actions. Changes/Files review marks use the same blue.
+- Selecting a file reveals its diff even when reviewed, keeping the Reviewed mark and other cards collapsed. File jumps retain toolbar clearance while lazy content settles.
+- Thread jumps align the annotated line below the toolbar and sticky file header rather than centering a response. Guide file rows use plain text on the sidebar background, connected to sections with subtle tree branches with slanted connectors and compact file rows without extra gaps. The last branch has a soft curve aligned to the other connectors’ endpoint, and the vertical line reaches up to the section number. Thread rows use bordered 12-point pills instead of file pills; groups have 8-point separation and aligned title/file/avatar columns. Folder paths appear only for duplicate filenames, with middle truncation preserving their endings.
+- Partially reviewed sections show a neutral native mixed-state minus in their Reviewed checkbox; none/all remain unchecked/checked.
+- Sidebar threads now only navigate; resolve/reopen is available from the main panel, with the shared rounded check icon.
+- Constrained thread metadata to the available card width so long author/status text truncates without overflowing.
+- Guide section, file and thread rows share 12-point corners and consistent hover washes. Thread metadata puts the reply count before Resolved.
+- Sidebar section headings with files include a right-aligned native Reviewed checkbox with unchecked/mixed/checked states, sharing the main panel’s section review action without navigating.
+- Sections without files show muted No files subtext beneath the title.
+- Sidebar section numbers use the system font, matching title size and line height and aligning on the first baseline.
+- Guide sidebar hierarchy uses 13-point semibold section titles, regular secondary file names, subdued counts and quieter thread previews with softer pill surfaces and borders.
+- Guide sidebar content has 16-point right padding and a stable scrollbar gutter, keeping rows and highlights away from the scrollbar.
+- Section/file highlights paint 1.5 points inside their vertical bounds, adding a 3-point visual gap without changing layout or hit targets.
+- View switches clear reading highlights before paint and defer their initial reading until scroll/resize corrections settle, preventing Changes-to-Guide highlight flicker. Normal scroll tracking remains immediate.
+- Section and file highlights follow canvas scrolling rather than the last click, with a subtle wash. Sidebar following prioritizes the current file, falling back to its section, and uses smooth scrolling unless Reduce Motion is enabled. Reading position is transient and does not add router history.
+- Section titles and their first file share the section scroll destination, preserving the explanation on stacked layouts and revealing a reviewed file when picked. Removed the immediate file scroll that competed with scroll restoration.
+- Sidebar selection and section jumps live in the router, with Back/Forward and existing scroll restoration. Empty views show No guide sections.
+
+## 2026-10-24 — Inline comments and sidebar menus
+
+- Inline composers use a raised gray card, outlined text area, corner close control, icon-labelled mode choices and circular send control. Own entries show author metadata and relative time without an Agent comment badge. Threads use compact padding and reply fields with 12-point gaps between messages; agent replies have a slightly darker inset surface with 16-point padding and no left border, including while streaming. Removed the message divider and restored outlined composer fields with 8-point text insets. Composer fields and inset replies share the cards’ 12-point radius. Removed the redundant inline line label while retaining the accessible anchor. Resolve and thread actions now share the first human author row and its menu; Edit is limited to comment threads. Annotation backgrounds match the diff, and threads grow without internal scrollbars. The mode switch appears only for a new thread; replies follow its established kind.
+- Changes/Files and Threads use small muted ellipsis menu buttons. Show Reviewed Files now lives in the file menu alongside tree/list layout; Threads keeps Open/Resolved and counts in its menu.
+- Empty thread filters match the Changes empty state: centered muted status and a bordered button to show the other filter when it has threads; no button when there are no threads at all.
+- Only when all changed files are reviewed and hidden, Changes shows a centered empty state with a muted, bordered Show Reviewed Files button. The state disappears when any files are visible, including reviewed files revealed by that button.
+
+## 2026-10-24 — Threads and Chat sidebar tabs
+
+- Replaced the stacked Chat/Threads split with full-height tabs, defaulting to Threads. The Open/Resolved filter
+  is a native dropdown at the right of the shared tab header, instead of a second tab row.
+  Removed the file-review summary row; thread navigation and resolve controls remain in Threads. Both tab contents stay mounted
+  while switching to preserve drafts, session state and filters.
+- Prompt attachments and review work sent to an agent open Chat; Show Threads selects Threads. Find follows
+  the active tab. Removed the obsolete vertical Threads divider, height and collapsed state.
+- File/Changes trees use 8-point nesting and smaller row insets to leave room for filenames. Their foreground,
+  selection and git colors follow the selected code theme via Pierre’s theme resolver; appearance still owns surfaces.
+- Shared segmented controls now support accessible tabs with roving focus and arrow/Home/End navigation.
+- Debt: selected sidebar tab lasts for the window; persist it with pane geometry if session restoration needs it.
+
+## 2026-10-24 — More breathing room in review content
+
+- Guide section text uses a tighter 1.65 line height, down from 1.8, while retaining paragraph and section spacing. File-card Reviewed controls use the same muted label colors as section controls.
+
+- Scrollable sticky section explanations have 16 points of right padding so overlay scrollbars stay clear of text.
+  Their tracks stay transparent on hover; the thumb appears during scrolling and hides after 700 ms idle. CSS scroll-state
+  queries enable internal scrolling only while the explanation is sticky, without changing its measured height.
+- Increased canvas padding to 24 points (40 in wide windows), keeping the sticky top gap aligned with the sides.
+- Guide sections have 48-point spacing; file cards have 32-point gaps, with 40 points between explanation and
+  code columns on wide canvases. Diagram preview side insets follow the wider gutters.
+
+## 2026-10-24 — Soft Dark appearance and code themes
+
+- Added Soft Dark in Settings and the native Settings menu. Its sampled reference colors are #1f2023 for
+  the canvas, #28292c for cards, and #2a332f/#392d30 for diff fills. Shared neutral tokens recolor panes,
+  controls and dialogs; diagrams follow the palette and native controls stay in dark mode.
+- Added an independent Code Theme choice: Default/Pierre, One Dark (reference), GitHub and Catppuccin, each
+  with light/dark variants. Code colors update live without replacing the app surfaces.
+- A Python sample below the code-theme picker previews hovered/focused options; only clicking saves a choice.
+  The tiny preview uses an independent highlighter, while saved choices update the shared worker pool for diffs.
+- Both settings persist in the existing SQLite settings table, emit settings events, and are covered by a
+  reopen/independence regression test. No schema migration is needed.
+
+## 2026-10-24 — Reviewed cards collapse completely
+
+- Collapsed reviewed cards hide their entire body, including context spacing and annotations. Previously
+  Pierre collapsed the code rows while the card body remained, leaving a narrow strip below the header.
+- Collapsed headers own all four rounded corners and the single bottom border.
+
+## 2026-10-24 — Guide section counters
+
+- Authored guide sections show a muted, zero-padded position/total counter below their title, including
+  text-only sections. The synthetic ungrouped-files section stays unnumbered; sticky explanations retain the counter.
+
+## 2026-10-24 — Quieter diff markers and context
+
+- Slimmed red/green change markers from 4 px to 1 px. Unmodified-line separators use centered muted labels between hairline dividers,
+  without a filled background. Existing expand controls and measured row heights remain intact.
+
+## 2026-10-24 — Consistent sticky top spacing
+
+- Guide text, initial file cards, sticky card headers and sticky section explanations use the same
+  16/32-point gap below the toolbar as the side gutters. Scrolling no longer pulls the cards closer to the toolbar than the guide's initial position.
+
+## 2026-10-24 — Threads in the right sidebar
+
+- Guide sections without files use a centered 800-point column. Guides have 24 points more initial top
+  spacing while sticky header clearance stays consistent.
+
+- GitHub and live preview links are direct top-bar controls. A single preview opens immediately; multiple
+  environments use a native menu. Disabled slots preserve tab positions when these links are unavailable.
+
+- Removed the bottom review bar. Threads now occupy a collapsible, vertically resizable section below chat,
+  with Open/Resolved filters, per-file grouping, review progress, line totals, and the existing reveal/resolve actions.
+- The Show Threads command opens the section; Review → Submit Review and the command palette retain review submission,
+  copying and sending comments to an agent. Sending feedback appears in the sidebar.
+- Removed Back, Forward, Open Quickly and Threads from the Review dropdown; shortcuts and command-palette actions remain.
+- Reclaimed bottom canvas space and expanded diagram previews to a 16-point bottom inset.
+- Debt: the Threads section's height and collapsed state reset on restart, matching the left history section.
+
+## 2026-10-24 — Selected glass crew app icon
+
+- The selected rounded crew concept is now the canonical `resources/coxswain.icon`: a fluid pale hull and
+  three pairs of asymmetric glass oars at 45 degrees, without an orange marker. The previous shell design is
+  retained in `resources/icon-concepts/shell-before-crew.icon` for reference.
+- Native Composer exports replace the app's PNG and multi-resolution ICNS. Existing dev Dock and package
+  wiring uses those files, and `pnpm icon` regenerates them from the selected document without changing it.
+- Typecheck, all 58 tests, lint, formatting and build pass. The packaged ICNS matches the production export,
+  and the new crew icon is verified in the native About panel using a scratch database.
+
+## 2026-10-24 — Workspace bar grouping
+
+- Workspace tabs have equal widths; switching the active tab no longer resizes them. Native separator slots
+  stay reserved when hidden beside the active tab, keeping positions steady.
+
+- New workspace has a separate circular glass group directly beside the tabs, before Review, Settings and chat.
+- Added 16 points between the window controls and file sidebar button. Removed the agent pane's duplicate
+  hide toggle; the main bar's right-sidebar control remains available.
+
+## 2026-10-24 — Native tab close and stable glass bars
+
+- Workspace tabs reveal native hover close buttons; Command-W closes the current tab without deleting its
+  workspace, comments, or sessions. Review reopens closed tabs, and history navigation reopens its target.
+- Chat uses the right-sidebar symbol. Removed the tab-switch icon and System Settings shortcut.
+- New, Search and other overlays keep native glass bars visible and disable their controls instead of
+  switching to web bars. The search popup stays between the bars.
+- A pinned toolkit source patch adds native button hover actions; macOS installation now rebuilds it with
+  Apple Command Line Tools. `pnpm native:glass` also rebuilds it manually.
+- Debt: the closed-tab set lasts for the window; persist it in SQLite for session restoration.
+
+## 2026-10-24 — Rounded glass paddle concept
+
+- `resources/icon-concepts/glass-oars-rounded/rounded-crew.icon` keeps the 45-degree oar axes and no orange
+  marker, with asymmetric hatchet blades based on the supplied rowing-oar reference. Broad, gently flattened
+  rounded ends sweep into slimmer shafts through long curved shoulders. The hull has a gently fuller, curved
+  midsection flowing into softly rounded bow and stern tips, without straight middle edges or pointed ends.
+- Four long tangent-matched hull curves replace the smaller alternating bends, removing the middle's wobble
+  while preserving its maximum width, length and rounded tips.
+- The slimmer proportions retain the oars' length, spacing and 45-degree axes, with gently tapering blade edges.
+- Shafts join along one side of each blade rather than its centre; mirrored asymmetric blade profiles keep
+  the port and starboard pairs balanced while preserving their fluid contours.
+- Native previews at 32, 64, 256 and 1024 px preserve the crew's simple silhouette while the blade/shaft
+  distinction adds detail at larger sizes. Production artwork remains unchanged.
+
+## 2026-10-24 — Abstract 45-degree crew concept
+
+- `resources/icon-concepts/glass-oars-45/abstract-crew.icon` removes the orange marker and simplifies the
+  overhead crew into a straight glass spine and three broad oar chevrons. All geometry uses axis-aligned
+  edges or exact 45-degree diagonals; separate thin shafts and paddle ends are removed.
+- Native Composer previews at 32, 64, 256 and 1024 px keep the three oar pairs distinct at small sizes.
+  The concept retains restrained glass refraction and the same Dock padding. Production artwork is unchanged.
+
+## 2026-10-24 — Photo-aligned glass oars concept
+
+- `resources/icon-concepts/glass-oars/rowing-crew.icon` follows the supplied overhead rowing photo: three
+  paired oars along a narrow shell, with an orange cox at the stern. The shared axis tilts slightly, and broad
+  glass blades distinguish the oars from their shafts. Four native groups keep it within Composer's layer limit.
+- Native macOS 27 previews are saved at 256 and 1024 px with normal Dock padding. This remains a separate
+  concept; the user's saved app icon is unchanged.
+- Native export, typecheck, lint, formatting and build pass. The full suite currently has one failure in the
+  separate workspace-layout test (`tabWidth >= 96`); icon work does not change that layout code.
+
+## 2026-10-24 — One toolbar and a desktop sidebar
+
+- The inner canvas toolbar is removed. Its PR, deployments, diff/range, saved views, New View, Back/Forward,
+  Open Quickly and Activity actions are in the main bar's native Review menu. Existing routes and callbacks
+  are shared with command palette actions; no review controls are lost.
+- One Settings dropdown groups System/Light/Dark, diff layout, file tree/list and Show Reviewed Files, with
+  App Settings and a macOS System Settings shortcut. Appearance writes still use the core and emit changes.
+- The leading sidebar button and ⌘B toggle the existing code-aware tree. Its edge-to-edge sidebar retains
+  selection, folder state, scroll and width when collapsed (the tree stays mounted); its divider resizes it. The section selector has no duplicate hide
+  button. The main bar's measured border-box width includes its padding, keeping right-side actions aligned.
+- Sticky file headers and guide explanations now clear the single main bar at 56 px; content starts at 68 px.
+  Expanded charts use the same 12 px gap below the main bar. No storage or dependency changes.
+
+## 2026-10-24 — Stable native workspace chrome
+
+- Workspace selection uses explicitly sized native SwiftUI buttons in a shared strip, with a glass capsule
+  on the active workspace. This replaces the form-style segmented picker and its centered intrinsic sizing.
+  The project picker and right-side Settings, chat, New workspace and All workspaces actions use matched
+  32 px glass groups, 28 px targets and SF Symbols. Toolbar geometry updates on resize, never on scrolling.
+- The full-width glass backdrop passes pointer events through; only the three control groups take clicks.
+  The 6 px strips above/below them and the inter-group gaps remain window drag regions.
+- When the minimum tab widths no longer fit, the selected workspace stays in the visible set; the native
+  All workspaces menu exposes every full title. No controls are squeezed or clipped off the right edge.
+- Native menu shortcuts switch workspaces: Control-Tab / Control-Shift-Tab, Command-1 through Command-8,
+  and Command-9 for the last workspace. Removal remains an explicit confirmed action; this does not turn
+  closing a visual tab into deleting a workspace. The controls are native SwiftUI composition, not Safari's
+  own tab implementation. No storage or dependency changes.
+
+## 2026-10-24 — Abstract glass navigation concepts
+
+- Matched native Composer concepts in `resources/icon-concepts/glass-navigation/` replace the vessel with
+  two interlocking glass chevrons. `with-orange.icon` adds a small amber bearing marker at the upper point;
+  `without-orange.icon` keeps the same glass geometry and lighting without that marker.
+- Both have 256 px comparison previews and 1024 px exports, rendered by Icon Composer 27 with normal Dock
+  padding. Refraction is restrained to keep the contours clear. The active app icon and saved source are unchanged.
+
+## 2026-10-24 — Layered glass vessel concept
+
+- A separate editable concept in `resources/icon-concepts/glass-vessel/coxswain.icon` explores a broader
+  opal deck above a teal hull and a floating blue water plane, with an amber cox. Native translucency and
+  refraction let the planes show through one another, inspired by Icon Composer's own dimensional icon.
+- Its four foreground groups use Composer's native midnight background. PNG and ICNS previews are rendered
+  with Apple's macOS 27 effects and the same Dock padding as the production icon. The user's saved production
+  document and active app exports are unchanged; concepts remain excluded from application bundles.
+
+## 2026-10-24 — Native workspace selection and window-button alignment
+
+- Supported Macs render workspace selection with a native SwiftUI segmented picker through the existing
+  island bridge. macOS owns rendering, selection, focus and pressed feedback. A native actions menu keeps
+  full workspace titles and removal available. Other systems and accessibility modes retain the HTML strip.
+- Workspace controls share the review islands' occlusion handling so HTML dialogs remain above all controls.
+  No storage or router changes; selection still uses the existing workspace navigation callback.
+- The workspace bar floats above a full-height canvas scrollport, so changes pass behind its native glass.
+  Project switching, New workspace, chat and Settings use native controls alongside workspace selection.
+  Sticky headers and section text clear both bars at 112 px; initial content starts at 124 px. Side panes
+  keep a 44 px top inset. No scroll listeners or per-frame layout updates are introduced.
+- Native window buttons start at (16, 15) points, centering their 14-point height in the 44-point tab bar.
+  Returning from full screen restores their position.
+
+## 2026-10-24 — Compact workspace tabs
+
+- Workspace tabs share a Safari-style rounded strip, filling the available width. Inactive tabs have subtle
+  separators; the active workspace has a raised pill and twice the flexible width to show more of its title.
+- Tabs shrink before overflowing, then scroll horizontally without a visible scrollbar. Selection remains
+  in view; keyboard navigation, PR and agent status, tooltips and the workspace context menu are preserved.
+  The project picker uses a matching capsule. No storage, navigation or dependency changes.
+
+## 2026-10-24 — Expandable diagrams
+
+- Generated Mermaid charts in guides and chat have a small muted expand icon in the top-right corner.
+  A large preview starts vertically centered and has no toolbar: trackpad pinch zooms around the pointer; two-finger scrolling pans freely in any direction, without scrollbars. Both previews share the same gesture handler.
+- Supported Macs use a native Liquid Glass child panel with transparent HTML above the material. It samples
+  the app beneath it while the main window stays opaque. Accessibility settings and unsupported platforms
+  retain a solid shared dialog. Escape, Close or clicking away dismisses the preview without losing guide scroll.
+- Edge-label backing spans are transparent so their rectangular fills do not leak beyond rounded pills.
+- The preview fills the space between the review bars, using their 12 px gaps and responsive side gutters.
+- A fresh SVG gives the preview distinct IDs. The native panel is sandboxed, has no app preload or Node access,
+  blocks navigation/new windows and uses a nonce-based CSP. No saved-data or dependency changes.
+
+## 2026-10-24 — Explanations beside guide cards
+
+### What works
+
+- Each guide section places its heading, section Reviewed control and explanation beside its file cards.
+  There is no duplicate file overview or guide navigation sidebar. Overall progress remains in the bottom bar.
+- The explanation sticks within its section below the top review bar while the cards scroll beside it. Long
+  explanations scroll within the available height. Below 960 px of canvas width, text stacks above the cards
+  and releases sticky positioning. Opening side panes participates in that width calculation.
+- Original prose part indices and ordering preserve quote anchors and inline threads. Prose-only sections
+  keep a full-width layout with readable text measure; unassigned guide files keep their final section.
+
+### Tech debt
+
+- The old fixed-width guide-contents component and its scroll-position tracking are removed. No storage or
+  agent-tool protocol changes; saved guides use the new presentation immediately.
+
+## 2026-10-24 — Consistent desktop spacing
+
+### What works
+
+- Shared spacing and control metrics feed CSS and native review toolbars from one source. Buttons have
+  28 px minimum targets, fields and list rows 32 px; content can grow. These are desktop app defaults,
+  informed by Apple's grouping and alignment guidance, rather than mandated HIG measurements.
+- Cards, settings, dialogs, command palette, Activity, commits/turns, chat, attachments and comment threads
+  use consistent insets and gaps. Cards share the review cards' 12 px radius and quiet hairline.
+- Screen sections have 24 px separation and responsive 24/32 px insets. Settings and action groups wrap.
+  PR details now clear the floating bars, using the same review gutters and initial/final content padding.
+- Review bars, guide contents and sticky file headers derive their clearances from shared metrics.
+  Code and tree reading density is unchanged. No new dependencies or saved-data changes.
+
+## 2026-10-24 — Vector app icon
+
+### What works
+
+- The rowing shell, cox marker and water are separate unmasked SVG layers on a shared 1024 px grid in
+  `resources/coxswain.icon`. The saved Icon Composer document owns their ordering, placement, colours,
+  opacity and native glass settings, including dark/tinted fills. It opens successfully in Icon Composer 27.
+- `pnpm icon` now uses Apple's bundled `ictool` to render that saved design with macOS 27 effects. AppKit
+  adds only the static Dock canvas's 100 px padding and resamples it for PNG and multi-resolution ICNS.
+  macOS packaging explicitly uses the ICNS; the dev Dock uses the PNG. Source hashes are unchanged by export.
+- The user's saved design, including the larger glass cox marker and darker water, is used as written.
+  The earlier custom SVG effect renderer and template mask are removed; native rendering replaces them.
+  Earlier raster concepts remain separate and are excluded from application bundles.
+- Typecheck, the full test suite, lint, formatting and the production build pass. The macOS package and
+  native About panel were checked with a scratch database. On this host, native export and the localhost
+  checksum test require normal host access; pnpm also needs `--config.verify-deps-before-run=false` for the
+  existing dependency configuration. No dependency or lockfile migration was made for icons.
+
+### Tech debt
+
+- Electron ships a static Default ICNS/PNG, so its Dock icon does not dynamically change appearance or
+  lighting. The source document retains native material and appearance settings for future layered delivery.
+- Regeneration needs macOS and Icon Composer 27 (or `ICON_COMPOSER_APP` for a custom app path).
+  Checked-in exports keep normal builds and release runners independent of those tools.
+
+## 2026-10-24 — App icon exploration
+
+- A separate raster candidate in `resources/icon-concepts/rowing-macos27/` keeps the diagonal rowing shell
+  and orange cox marker, exploring opal surfaces and glass highlights inspired by macOS 27. Its generation
+  prompt and Apple reference links are saved alongside it. The production SVG and PNG are unchanged.
+- `preview-v2.png` reduces broad glare and the thick glass rim, with a satin shell and coral marker.
+  The installed native Notes icon supplied a visual reference for enclosure spacing and perimeter treatment;
+  its artwork is not copied into the repository. The revision's built-in image generation prompt is retained.
+- This is a visual preview, not a verified Apple template export. Native delivery still needs unmasked
+  layers, appearance variants and validation in Icon Composer. No application code or packaging changed.
+
+## 2026-10-24 — Diagram typography and colour
+
+### What works
+
+- Mermaid diagrams share a light/dark base theme with system typography, neutral nodes, rounded boxes,
+  neutral connectors and more space between flow nodes and sequence messages. Flow nodes have no drop shadows.
+- Flowcharts match the supplied Codex reference with dashed rounded decision boxes and pill-shaped edge labels.
+  Presentation overrides use Mermaid's parsed node model; source, labels and connections remain unchanged.
+- Pie and XY charts use a coordinated categorical palette, clearer labels and neutral axes. Guide charts sit on
+  solid card surfaces with 24/32 px padding. Rendering and diagram validation use the same configuration.
+- Flow, sequence, pie and XY examples render successfully in Electron in both themes.
+
+### Tech debt
+
+- No new dependencies or saved-data changes. Layout and legibility still depend on the agent's diagram structure.
+- Decisions with escaped/nonstandard IDs retain their original shape; extend the presentation serializer when needed.
+
+## 2026-10-24 — Guide contents card
+
+### What works
+
+- The guide's table of contents is a separate rounded card between the floating review bars, using the same
+  hairline colour as file cards. Its top aligns with sticky file headers at 68 px; the bottom uses the same inset.
+  Responsive 16/32 px gutters match the file cards, keeping the card's reading width as the gutters grow.
+- The section list scrolls inside the card without compressing its rows, keeping its first and last items reachable.
+- Generated guide charts and diagrams share the cards' 12 px radius and 0.5 px hairline colour, in both themes.
+- Inline comment composers and saved comment/agent threads share the same outline, including threads on prose.
+
+### Tech debt
+
+- The contents card keeps its fixed width; the existing resizable-contents follow-up still applies.
+
+## 2026-10-24 — Native glass overlays and stable file-card headers
+
+### What works
+
+- The top and bottom review bars float over the scrolling changes. On supported macOS they use native Liquid
+  Glass and native controls; the window stays opaque. The first and last lines remain reachable through padding.
+- Dialogs, the command palette, Activity and the thread list temporarily use web controls so native views yield
+  to HTML. Reduced transparency, high contrast and unsupported platforms keep web controls. Native views dispose
+  with the window. The toolkit and its native/Swift binaries are unpacked from ASAR.
+- File cards have one shared rounded, bordered header outside Pierre's code renderer. The header stays below
+  the review toolbar as code scrolls behind it, keeping Reviewed and the file identity in the card's top edge.
+- Canvas spacing belongs to the content wrapper, not the scrollport: sticky headers sit 68 px below its top,
+  without an extra 80 px from the initial content padding.
+- Each sticky header masks the code above it within its own card; the card clips that mask at its edges.
+  Rounded corner masks preserve the header edge. At the card's end it passes behind the native toolbar.
+  No clipping animation, scroll listener or geometry measurement follows scrolling.
+- The header owns its top border and the code body owns its side and bottom borders. The outer card has no
+  border to show through masked space or double the bottom edge; the mask stops above the header's top stroke.
+- Top corner masks paint an opaque cutout and their own border arc, preventing diff colours from bleeding
+  through the rounded header. The code body's bottom outline sits above the sticky header at the card's end,
+  so the bottom corner arcs remain visible as the card scrolls away.
+- Card outlines, corner arcs and header separators share a 0.5 px hairline and a quieter neutral colour in both
+  themes; masks use the same stroke width to keep the rounded edges aligned.
+- Rounded cutouts and their hairlines use shared SVG arc geometry at both ends of a card. This replaces hard
+  radial-gradient stops with vector antialiasing and keeps the corner geometry consistent with the 12 px radius.
+
+### Tech debt
+
+- Native and web review controls share actions but have separate rendering; keep their capabilities aligned.
+  New HTML popovers need the shared glass-occlusion hook (Dialog already uses it).
+
+## 2026-10-24 — Space around review content
+
+### What works
+
+- File diffs, guide-embedded files and whole-file views share rounded, bordered cards on a quieter canvas surface.
+  Cards have 24 px between them and responsive side gutters; sticky headers, Reviewed and inline threads stay intact.
+- Guide prose and headings have more space and a larger reading size. Pane bars and the table of contents have
+  more room without changing code-line density.
+
+### Tech debt
+
+- No new shortcuts; the existing Pierre renderers and shared styling tokens supply the file cards.
+
+## 2026-10-24 — Resizable Commits and Turns
+
+### What works
+
+- Drag the horizontal divider above the Commits/Turns bar to resize the bottom pane. The Navigator and bottom
+  pane each keep 96 px; the bottom pane shrinks with the window. Arrow keys resize a focused divider too.
+- Switching Commits/Turns, collapsing the pane, or hiding the Navigator keeps the chosen height for the window.
+
+### Tech debt
+
+- Paid off: the fixed equal split is gone. Height still resets on restart, like pane widths (`ponytail:` in App.tsx).
+
+## 2026-10-24 — Workspace tabs and a primary canvas
+
+### What works
+
+- Workspaces are tabs across the top, next to the project picker, with horizontal overflow and keyboard navigation.
+  Titles, PR state, agent status and the native removal menu stay available. Switching tabs restores the existing
+  canvas location and scroll, and Back/Forward still crosses workspaces.
+- The diff or guide takes the primary area. Chat opens on the right, with a persistent toggle in the tab bar,
+  and defaults to collapsed. Explicit visibility choices remain saved. New View prompts reveal the composer.
+- The optional Navigator stays on the left, with a narrower initial width; chat and Navigator can be resized.
+
+### Tech debt
+
+- Paid off: the workspace sidebar and its visibility state are gone. Pane widths still reset on restart.
+
+## 2026-10-24 — Appearance setting
+
+### What works
+
+- Settings offers _System_, _Light_ and _Dark_. The choice is kept in SQLite and applied through Electron’s
+  native theme before a window opens, and immediately when changed. Native controls, app styles, code colours
+  and diagrams follow it. System remains the default.
+
+### Tech debt
+
+- No new shortcuts or migrations; uses the existing settings table and change events.
+
 ## 2026-10-07 — Navigator split
 
 ### What works
@@ -30,8 +870,8 @@ Where the build stands and what we owe. Newest entry first. Terms are defined in
   Claude Code's `errorKind: "authentication_failed"`, Codex's `codexErrorInfo` (`unauthorized` or HTTP 401). A
   Claude adapter with a turn running isn't restarted after signing in. Only the agent
   pane offers to sign in; a failed session start or a question's turn shows the plain error.
-- The halves split the pane evenly; no drag handle between them (`ponytail:` in `App.tsx`). Whether the bottom
-  half is collapsed resets on restart, like the pane widths.
+- Paid off (2026-10-24): the fixed equal split now has a resize handle. Height and collapsed state reset on restart,
+  like pane widths.
 
 ## 2026-10-05 — Comment threads and agent threads; comments posted as written
 

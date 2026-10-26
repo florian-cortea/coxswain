@@ -1,0 +1,36 @@
+/* One branch geometry for Guide groups and Pierre's current indentation level. */
+.sidebar-tree-branch {
+  position: relative;
+}
+.sidebar-tree-branch::before,
+.sidebar-tree-branch::after {
+  content: "";
+  position: absolute;
+  left: var(--sidebar-branch-left, -16px);
+  pointer-events: none;
+}
+.sidebar-tree-branch::before {
+  top: 8px;
+  width: 12px;
+  transform: rotate(30deg);
+  transform-origin: left center;
+  border-top: var(--review-border-width) solid var(--guide-tree-line);
+}
+.sidebar-tree-branch::after {
+  top: 0;
+  bottom: 0;
+  border-left: var(--review-border-width) solid var(--guide-tree-line);
+}
+.sidebar-tree-branch[data-sidebar-last="true"]::after {
+  display: none;
+}
+.sidebar-tree-branch[data-sidebar-last="true"]::before {
+  top: 0;
+  width: 16px;
+  height: 16px;
+  border: 0;
+  transform: none;
+  background: var(--guide-tree-line);
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M.25 0V6Q.25 8 1.98 9L10.39 13.86' fill='none' stroke='black' stroke-width='.65' stroke-linecap='round'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}

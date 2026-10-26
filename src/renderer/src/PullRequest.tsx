@@ -14,6 +14,7 @@ import { Card } from "./components/layout";
 import { cn, divider, muted } from "./components/styles";
 import { ErrorText, ProblemMessage, Prose } from "./components/text";
 import { ago } from "./format";
+import { MarkdownImageContext } from "./components/MarkdownImage";
 
 // The colour of a check's state, as a dot: on the PR panel, the canvas bar's PR chip and the Commits pane.
 export const checkColour: Record<CheckState, string> = {
@@ -37,23 +38,32 @@ export const ProblemText = ({ problem }: { problem: NonNullable<Problem> }) => (
   </ErrorText>
 );
 
-const Section = ({
+function Section({
   title,
   children,
   end,
+  framed = true,
 }: {
   title: string;
   children: ReactNode;
   end?: ReactNode;
-}) => (
-  <section className={cn("flex flex-col gap-2 border-t pt-3", divider)}>
-    <div className="flex items-center gap-2">
-      <h2 className="flex-1 text-xs font-semibold">{title}</h2>
-      {end}
-    </div>
-    {children}
-  </section>
-);
+  framed?: boolean;
+}) {
+  const content = (
+    <>
+      <div className="flex items-center gap-3">
+        <h2 className="flex-1 text-sm font-semibold">{title}</h2>
+        {end}
+      </div>
+      {children}
+    </>
+  );
+  return (
+    <section className="flex min-w-0 flex-col gap-4">
+      {framed ? <Card className="pr-overview-card flex flex-col gap-4">{content}</Card> : content}
+    </section>
+  );
+}
 
 // A block of the side column: a small heading, then who or what.
 const Side = ({
@@ -65,7 +75,7 @@ const Side = ({
   children: ReactNode;
   end?: ReactNode;
 }) => (
-  <div className={cn("flex flex-col gap-1 border-b pb-3 text-xs", divider)}>
+  <div className={cn("pr-overview-side flex min-w-0 flex-col gap-3 text-xs", divider)}>
     <div className={cn("flex items-center gap-2 font-semibold", muted)}>
       <span className="flex-1">{title}</span>
       {end}
@@ -94,22 +104,26 @@ export function PullRequestPanel(props: { workspaceId: number; pr: PullRequestDe
     return r.status === "ok";
   };
   return (
-    <div className="min-h-0 flex-1 overflow-auto select-text">
-      <div className="mx-auto flex max-w-5xl flex-col gap-4 p-4 text-sm">
-        <Header pr={pr} />
-        {problem && <ProblemText problem={problem} />}
-        {/* The side column wraps under the main one once that would be narrower than its basis. */}
-        <div className="flex flex-wrap items-start gap-6">
-          <div className="flex min-w-0 flex-[999_1_28rem] flex-col gap-4">
-            <Description pr={pr} change={change} />
-            <Conversation pr={pr} />
-            <Checks workspaceId={workspaceId} pr={pr} change={change} />
-            <CommentBox change={change} />
+    <MarkdownImageContext.Provider
+      value={{ workspaceId, head: pr.head, url: pr.url.split("/pull/")[0] }}
+    >
+      <div className="pr-overview review-prose min-h-0 flex-1 overflow-auto select-text">
+        <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-8 px-[var(--review-gutter)] pt-[var(--review-content-start)] pb-[var(--review-content-end)] text-sm">
+          <Header pr={pr} />
+          {problem && <ProblemText problem={problem} />}
+          {/* The side column wraps under the main one once that would be narrower than its basis. */}
+          <div className="flex flex-wrap items-start gap-8">
+            <div className="flex min-w-0 flex-[999_1_34rem] flex-col gap-8">
+              <Description pr={pr} change={change} />
+              <Conversation pr={pr} />
+              <Checks workspaceId={workspaceId} pr={pr} change={change} />
+              <CommentBox change={change} />
+            </div>
+            <People pr={pr} change={change} />
           </div>
-          <People pr={pr} change={change} />
         </div>
       </div>
-    </div>
+    </MarkdownImageContext.Provider>
   );
 }
 
@@ -125,24 +139,34 @@ const methodLabels: Record<MergeMethod, string> = {
 function Header({ pr }: { pr: PullRequestDetails }) {
   const [state, colour] = match(pr)
     .returnType<[string, string]>()
-    .with({ state: "open", draft: true }, () => ["Draft", "bg-neutral-500"])
-    .with({ state: "open" }, () => ["Open", "bg-green-600"])
-    .with({ state: "merged" }, () => ["Merged", "bg-purple-600"])
-    .with({ state: "closed" }, () => ["Closed", "bg-red-600"])
+    .with({ state: "open", draft: true }, () => [
+      "Draft",
+      "bg-neutral-500/10 text-neutral-600 dark:text-neutral-300",
+    ])
+    .with({ state: "open" }, () => ["Open", "bg-green-500/10 text-green-700 dark:text-green-400"])
+    .with({ state: "merged" }, () => [
+      "Merged",
+      "bg-purple-500/10 text-purple-700 dark:text-purple-400",
+    ])
+    .with({ state: "closed" }, () => ["Closed", "bg-red-500/10 text-red-700 dark:text-red-400"])
     .exhaustive();
   return (
-    <header className={cn("flex flex-col gap-1.5 border-b pb-3", divider)}>
-      <h1 className="text-lg font-semibold">
+    <header className="flex min-w-0 flex-col gap-4">
+      <h1 className="text-2xl leading-tight font-semibold tracking-tight">
         <Prose inline>{pr.title}</Prose>{" "}
         <span className={cn("font-normal", muted)}>#{pr.number}</span>
       </h1>
       <div className={cn("flex flex-wrap items-center gap-2 text-xs", muted)}>
-        <span className={cn("rounded-full px-2 py-0.5 text-white", colour)}>{state}</span>
+        <span className={cn("rounded-full px-2.5 py-1 font-medium", colour)}>{state}</span>
         <span>
-          {pr.author ?? "ghost"} wants to merge <code>{pr.headRef}</code> into{" "}
-          <code>{pr.baseRef}</code>
+          {pr.author ?? "ghost"} · <code>{pr.headRef}</code> → <code>{pr.baseRef}</code>
         </span>
-        <a href={pr.url} target="_blank" rel="noreferrer" className="underline">
+        <a
+          href={pr.url}
+          target="_blank"
+          rel="noreferrer"
+          className="ml-auto opacity-75 hover:opacity-100"
+        >
           Open on GitHub
         </a>
       </div>
@@ -199,7 +223,7 @@ function Checks({
   const done = checks.filter((c) => c.state === "success" || c.state === "neutral");
   const passed = done.filter((c) => c.state === "success").length;
   const row = (c: Check) => (
-    <div key={c.name} className="flex items-center gap-2 text-xs">
+    <div key={c.name} className="pr-overview-check flex min-w-0 items-center gap-3 text-xs">
       <CheckDot state={c.state} title={c.state} />
       <span className="font-medium">{c.name}</span>
       <span className={cn("min-w-0 flex-1 truncate", muted)}>{c.detail}</span>
@@ -296,7 +320,7 @@ function Description({ pr, change }: { pr: PullRequestDetails; change: Change })
     if (editing !== null && (await change({ kind: "body", body: editing }))) setEditing(null);
   };
   return (
-    <Card className="flex flex-col gap-2">
+    <Card className="pr-overview-card flex min-w-0 flex-col gap-5">
       <div className={cn("flex items-center gap-1.5 text-xs", muted)}>
         <span className="font-medium text-neutral-900 dark:text-neutral-100">
           {pr.author ?? "ghost"}
@@ -342,50 +366,52 @@ function People({ pr, change }: { pr: PullRequestDetails; change: Change }) {
   const mine = pr.assignees.includes(pr.viewer);
   const none = <span className={muted}>None yet</span>;
   return (
-    <aside className="flex flex-[1_0_14rem] flex-col gap-3">
-      <Side title="Reviewers">
-        {pr.reviewers.map((r) => (
-          <div key={r.login} className="flex items-baseline gap-2">
-            <span className="min-w-0 flex-1 truncate">{r.login}</span>
-            <span className={muted}>{r.state}</span>
-          </div>
-        ))}
-        {!pr.reviewers.length && none}
-      </Side>
-      <Side
-        title="Assignees"
-        end={
-          <Button
-            variant="ghost"
-            className="px-1.5 font-normal"
-            onClick={() => void change({ kind: "assign", on: !mine })}
-          >
-            {mine ? "Unassign yourself" : "Assign yourself"}
-          </Button>
-        }
-      >
-        {pr.assignees.map((a) => (
-          <div key={a}>{a}</div>
-        ))}
-        {!pr.assignees.length && none}
-      </Side>
-      <Side title="Labels">
-        {pr.labels.length ? (
-          <span className="flex flex-wrap gap-1">
-            {pr.labels.map((l) => (
-              <span
-                key={l.name}
-                style={{ borderColor: `#${l.color}` }}
-                className="rounded-full border px-1.5"
-              >
-                {l.name}
-              </span>
-            ))}
-          </span>
-        ) : (
-          none
-        )}
-      </Side>
+    <aside className="min-w-0 flex-[1_0_16rem]">
+      <Card className="pr-overview-card flex flex-col gap-5">
+        <Side title="Reviewers">
+          {pr.reviewers.map((r) => (
+            <div key={r.login} className="flex items-baseline gap-2">
+              <span className="min-w-0 flex-1 truncate">{r.login}</span>
+              <span className={muted}>{r.state}</span>
+            </div>
+          ))}
+          {!pr.reviewers.length && none}
+        </Side>
+        <Side
+          title="Assignees"
+          end={
+            <Button
+              variant="ghost"
+              className="px-1.5 font-normal"
+              onClick={() => void change({ kind: "assign", on: !mine })}
+            >
+              {mine ? "Unassign yourself" : "Assign yourself"}
+            </Button>
+          }
+        >
+          {pr.assignees.map((a) => (
+            <div key={a}>{a}</div>
+          ))}
+          {!pr.assignees.length && none}
+        </Side>
+        <Side title="Labels">
+          {pr.labels.length ? (
+            <span className="flex flex-wrap gap-1">
+              {pr.labels.map((l) => (
+                <span
+                  key={l.name}
+                  style={{ borderColor: `#${l.color}` }}
+                  className="rounded-full border px-1.5"
+                >
+                  {l.name}
+                </span>
+              ))}
+            </span>
+          ) : (
+            none
+          )}
+        </Side>
+      </Card>
     </aside>
   );
 }
@@ -393,10 +419,16 @@ function People({ pr, change }: { pr: PullRequestDetails; change: Change }) {
 // The PR's conversation, oldest first: comments on it, reviews' summaries and comments on whole files.
 function Conversation({ pr }: { pr: PullRequestDetails }) {
   return (
-    <Section title={`Conversation · ${pr.conversation.length}`}>
+    <Section title={`Conversation · ${pr.conversation.length}`} framed={false}>
       {pr.conversation.map((c) => (
-        <Card key={c.id} className="flex flex-col gap-2">
+        <Card key={c.id} className="pr-overview-card flex min-w-0 flex-col gap-4">
           <div className={cn("flex items-center gap-1.5 text-xs", muted)}>
+            <span
+              aria-hidden="true"
+              className="flex size-6 shrink-0 items-center justify-center rounded-full bg-neutral-200 text-[10px] font-semibold dark:bg-neutral-700"
+            >
+              {c.author.slice(0, 1).toUpperCase()}
+            </span>
             <span className="font-medium text-neutral-900 dark:text-neutral-100">{c.author}</span>
             {c.review && <span>{c.review}</span>}
             {c.path && (

@@ -131,10 +131,10 @@ export function Turns(props: {
   );
 }
 
-const pane = "flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto p-2 text-xs";
+const pane = "flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-3 text-xs";
 
 const AllChanges = ({ on, onPick }: { on: boolean; onPick: () => void }) => (
-  <button className={cn("rounded px-2 py-1 text-left", selectable(on))} onClick={onPick}>
+  <button className={cn("min-h-7 rounded-md px-3 py-2 text-left", selectable(on))} onClick={onPick}>
     All Changes
   </button>
 );
@@ -157,7 +157,7 @@ function Row(props: {
   return (
     <button
       title={props.title}
-      className={cn("flex flex-col rounded px-2 py-1 text-left", selectable(props.on))}
+      className={cn("flex flex-col min-h-7 rounded-md px-3 py-2 text-left", selectable(props.on))}
       onClick={props.onClick}
     >
       <span className="flex w-full gap-2">

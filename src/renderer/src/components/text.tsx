@@ -3,9 +3,15 @@ import {
   type ReactNode,
   useContext,
   useEffect,
+  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
+import { installDiagramGestures } from "../../../shared/diagram-gestures";
+import { createPortal } from "react-dom";
+import { Button } from "./button";
+import { ExpandIcon } from "./icons";
+import { Dialog } from "./layout";
 import Markdown, { type Components } from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize from "rehype-sanitize";
@@ -14,6 +20,8 @@ import { match } from "ts-pattern";
 import type { GitProblem } from "../../../core/git";
 import type { GitHubProblem } from "../../../core/github";
 import { cn } from "./styles";
+import { MarkdownImage } from "./MarkdownImage";
+import { diagramConfig, diagramPresentation } from "./diagram-theme";
 
 const code =
   "rounded bg-neutral-100 px-1.5 py-0.5 font-mono text-xs select-text dark:bg-neutral-800";
@@ -21,6 +29,7 @@ const code =
 // These are component types, not callbacks: defining them inside Prose would remount every diagram
 // whenever its parent renders (opening the command palette, scrolling between sections, …).
 const components: Components = {
+  img: ({ node: _node, ...props }) => <MarkdownImage {...props} />,
   a: (p) => <a {...p} target="_blank" />,
   pre: ({ node, ...p }) => {
     const code = node?.children[0];
@@ -140,45 +149,25 @@ export function Prose({
 const dark = matchMedia("(prefers-color-scheme: dark)");
 const subscribeDark = (onChange: () => void) => {
   dark.addEventListener("change", onChange);
-  return () => dark.removeEventListener("change", onChange);
+  const observer = new MutationObserver(onChange);
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["data-appearance"],
+  });
+  return () => {
+    dark.removeEventListener("change", onChange);
+    observer.disconnect();
+  };
 };
-
-// Charts (pie, xychart's bars and lines) get a palette of their own: the diagrams' themes would draw them in greys.
-// Slices are split by a gap of the page's colour rather than outlined.
-const chartPalette = [
-  "#6366f1",
-  "#14b8a6",
-  "#f59e0b",
-  "#f43f5e",
-  "#0ea5e9",
-  "#8b5cf6",
-  "#84cc16",
-  "#f97316",
-];
-const chartTheme = (isDark: boolean) => ({
-  ...Object.fromEntries(chartPalette.map((c, i) => [`pie${i + 1}`, c])),
-  pieOpacity: "1",
-  pieStrokeColor: isDark ? "#171717" : "#ffffff",
-  pieStrokeWidth: "2px",
-  pieOuterStrokeWidth: "0px",
-  pieSectionTextColor: "#ffffff",
-  xyChart: { plotColorPalette: chartPalette.join(","), backgroundColor: "transparent" },
-});
 
 // Draws a mermaid diagram as SVG, loading mermaid first (it's big, so only when one shows). Throws mermaid's error for a
 // diagram that doesn't parse or draw. Parsed first: a failed render leaves mermaid's error graphic in the page.
 let drawn = 0;
-async function drawDiagram(code: string, isDark: boolean): Promise<string> {
+async function drawDiagram(code: string, isDark: boolean, softDark = false): Promise<string> {
   const { default: mermaid } = await import("mermaid");
-  mermaid.initialize({
-    startOnLoad: false,
-    securityLevel: "strict",
-    theme: isDark ? "dark" : "neutral",
-    themeVariables: chartTheme(isDark),
-    fontFamily: "system-ui, sans-serif",
-  });
-  await mermaid.parse(code);
-  return (await mermaid.render(`mermaid-${++drawn}`, code)).svg;
+  mermaid.initialize(diagramConfig(isDark, softDark));
+  const diagram = await mermaid.mermaidAPI.getDiagramFromText(code);
+  return (await mermaid.render(`mermaid-${++drawn}`, diagramPresentation(code, diagram))).svg;
 }
 
 // ADR 0026: the view tools check the agent's diagrams by drawing them here before they're saved, so the agent hears
@@ -187,7 +176,11 @@ window.coxswain.onCheckDiagrams(async (codes) => {
   const errors: (string | null)[] = [];
   for (const code of codes)
     errors.push(
-      await drawDiagram(code, dark.matches).then(
+      await drawDiagram(
+        code,
+        dark.matches,
+        document.documentElement.dataset.appearance === "soft-dark",
+      ).then(
         () => null,
         (e: Error) => e.message,
       ),
@@ -197,16 +190,26 @@ window.coxswain.onCheckDiagrams(async (codes) => {
 
 // A mermaid diagram, drawn as SVG in the system theme. One that doesn't draw shows its code and the error.
 function Mermaid({ code }: { code: string }) {
-  const isDark = useSyncExternalStore(subscribeDark, () => dark.matches);
+  const appearance = useSyncExternalStore(subscribeDark, () =>
+    match({ dark: dark.matches, appearance: document.documentElement.dataset.appearance })
+      .with({ appearance: "soft-dark" }, () => "soft-dark" as const)
+      .with({ dark: true }, () => "dark" as const)
+      .otherwise(() => "light" as const),
+  );
+  const expandButton = useRef<HTMLButtonElement>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  useEffect(() => {
+    if (expanded) return () => expandButton.current?.focus({ preventScroll: true });
+  }, [expanded]);
   const [result, setResult] = useState<{ svg?: string; error?: string }>({});
   useEffect(() => {
     let live = true;
-    drawDiagram(code, isDark).then(
+    drawDiagram(code, appearance !== "light", appearance === "soft-dark").then(
       (svg) => live && setResult({ svg }),
       (e: Error) => live && setResult({ error: e.message }),
     );
     return () => void (live = false);
-  }, [code, isDark]);
+  }, [code, appearance]);
   if (result.error)
     return (
       <div className="mermaid">
@@ -217,12 +220,61 @@ function Mermaid({ code }: { code: string }) {
       </div>
     );
   return result.svg ? (
-    <div
-      className="mermaid my-2 flex justify-center [&_svg]:h-auto [&_svg]:max-w-full"
-      dangerouslySetInnerHTML={{ __html: result.svg }}
-    />
+    <div className="mermaid relative my-2">
+      <div className="absolute top-2 right-2 z-10 leading-none">
+        <Button
+          ref={expandButton}
+          variant="ghost"
+          aria-label="Expand diagram"
+          title="Expand diagram"
+          className="p-1 text-neutral-500 dark:text-neutral-400"
+          onClick={() => {
+            void drawDiagram(code, appearance !== "light", appearance === "soft-dark")
+              .then(async (svg) => {
+                if (!(await window.coxswain.showDiagram(svg))) setExpanded(svg);
+                expandButton.current?.focus({ preventScroll: true });
+              })
+              .catch((e: Error) => setResult({ error: e.message }));
+          }}
+        >
+          <ExpandIcon />
+        </Button>
+      </div>
+      <div
+        className="flex justify-center [&_svg]:h-auto [&_svg]:max-h-[min(560px,65vh)] [&_svg]:w-auto [&_svg]:max-w-full"
+        dangerouslySetInnerHTML={{ __html: result.svg }}
+      />
+      {expanded &&
+        createPortal(
+          <DiagramPreview svg={expanded} onClose={() => setExpanded(null)} />,
+          document.body,
+        )}
+    </div>
   ) : (
     <div className="mermaid text-xs text-neutral-500">Drawing the diagram…</div>
+  );
+}
+
+function DiagramPreview({ svg, onClose }: { svg: string; onClose: () => void }) {
+  const viewport = useRef<HTMLDivElement>(null);
+  const drawing = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (viewport.current && drawing.current)
+      return installDiagramGestures(viewport.current, drawing.current);
+  }, []);
+  return (
+    <Dialog title="Diagram" wide minimal onClose={onClose}>
+      <div
+        ref={viewport}
+        className="relative min-h-0 flex-1 overflow-hidden touch-none select-none"
+      >
+        <div
+          ref={drawing}
+          className="w-full [&_svg]:h-auto [&_svg]:w-full [&_svg]:max-w-none!"
+          dangerouslySetInnerHTML={{ __html: svg }}
+        />
+      </div>
+    </Dialog>
   );
 }
 

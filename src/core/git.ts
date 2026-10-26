@@ -14,7 +14,12 @@ import {
 } from "./github.ts";
 import { addLocalProject, getProject, gitHubRepo, type Project } from "./projects.ts";
 import { snapshotOf } from "./snapshot.ts";
-import { getWorkspaceRepo, setWorkspacePullRequest } from "./workspaces.ts";
+import {
+  getWorkspaceRepo,
+  setWorkspacePullRequest,
+  getAutoUpdate,
+  setAutoUpdate,
+} from "./workspaces.ts";
 
 // ADR 0008: coxswain's own blobless clone per GitHub project, or the user's own repository for a local one (ADR 0040),
 // and one worktree per workspace on the PR's head branch, or on the workspace's own branch (ADR 0028).
@@ -236,7 +241,7 @@ export async function openWorktree(db: Db, workspaceId: number): Promise<Worktre
   }
   if (prNumber === null) {
     const c = await cloned;
-    return c.status === "ok" ? openBranch(workspaceId, w) : c;
+    return c.status === "ok" ? openBranch(db, workspaceId, w) : c;
   }
   const { owner, name } = gitHubRepo(w);
   const [pr, c] = await Promise.all([getPullRequestHead(owner, name, prNumber), cloned]);
@@ -250,9 +255,10 @@ export async function openWorktree(db: Db, workspaceId: number): Promise<Worktre
     const path = worktreePath(w, w);
     const branch = pr.headRef;
     const upstream = `origin/${branch}`;
+    const expectedHead = await prepareRemoteUpdate(db, workspaceId, path, upstream);
     await git(repo, ["fetch", "origin", `+refs/heads/${branch}:refs/remotes/${upstream}`]);
     await addWorktree(repo, path, branch, upstream, true);
-    const notice = await catchUp(path, upstream, "The PR has new commits");
+    const notice = await catchUp(db, workspaceId, path, upstream, expectedHead);
     const opened = { head: pr.head, mergeBase: pr.mergeBase, prNumber, remote: true };
     lastOpened.set(workspaceId, opened);
     return { status: "ok" as const, ...opened, notice };
@@ -264,6 +270,7 @@ export async function openWorktree(db: Db, workspaceId: number): Promise<Worktre
 // Offline, it carries on with what was fetched before. A local repository's base branch is the user's own, and what's
 // pushed is on its origin, if it has one (ADR 0040).
 function openBranch(
+  db: Db,
   workspaceId: number,
   w: ProjectRepo & { branch: string | null; baseBranch: string | null },
 ): Promise<WorktreeResult> {
@@ -278,6 +285,7 @@ function openBranch(
         () => false,
       );
     // Fetching a branch that was never pushed fails too, so only the base branch's failure says we're offline.
+    const expectedHead = await prepareRemoteUpdate(db, workspaceId, path, `origin/${branch}`);
     const [fetched] = remote ? await Promise.all([fetch(base), fetch(branch)]) : [true];
     const pushed = remote && (await hasRef(repo, `refs/remotes/origin/${branch}`));
     const baseRef =
@@ -286,7 +294,7 @@ function openBranch(
         : `origin/${base}`;
     await addWorktree(repo, path, branch, pushed ? `origin/${branch}` : baseRef, pushed);
     const behind = pushed
-      ? await catchUp(path, `origin/${branch}`, "The branch has new commits")
+      ? await catchUp(db, workspaceId, path, `origin/${branch}`, expectedHead)
       : null;
     const mergeBase = (await gitText(path, ["merge-base", baseRef, "HEAD"])).trim();
     const head = pushed
@@ -361,21 +369,53 @@ async function pruneOurs(repo: string) {
       await git(repo, ["worktree", "remove", "--force", w.path]);
 }
 
-// Fast-forwards the worktree to upstream when it's behind and has no local changes. Otherwise, if it's behind, says so
-// (moved: what happened on GitHub).
-async function catchUp(path: string, upstream: string, moved: string): Promise<string | null> {
+// Inspect before fetching: the old remote ref distinguishes local commits from a remote rewrite.
+export async function prepareRemoteUpdate(
+  db: Db,
+  workspaceId: number,
+  path: string,
+  upstream: string,
+): Promise<string | null> {
+  if (!existsSync(join(path, ".git"))) return null;
+  const head = (await gitText(path, ["rev-parse", "HEAD"])).trim();
+  if (!(await getAutoUpdate(db, workspaceId))) return head;
+  const dirty = (await gitText(path, ["status", "--porcelain"])).trim();
+  const local = await gitText(path, ["rev-list", "--count", `${upstream}..HEAD`]).catch(() => "1");
+  if (dirty || Number(local.trim()) > 0) await setAutoUpdate(db, workspaceId, false);
+  return head;
+}
+
+// The watcher also notices local edits while no remote check is running.
+export async function protectLocalWorkspace(db: Db, workspaceId: number) {
+  if (!(await getAutoUpdate(db, workspaceId))) return;
+  const w = await getWorkspaceRepo(db, workspaceId);
+  const path = worktreePath(w, w);
+  if (!existsSync(join(path, ".git"))) return;
+  const upstream = (
+    await gitText(path, ["rev-parse", "--abbrev-ref", "@{upstream}"]).catch(() => "origin/missing")
+  ).trim();
+  await prepareRemoteUpdate(db, workspaceId, path, upstream);
+}
+
+export async function catchUp(
+  db: Db,
+  workspaceId: number,
+  path: string,
+  upstream: string,
+  expectedHead: string | null,
+): Promise<string | null> {
   const [head, remote, dirty] = await Promise.all([
     gitText(path, ["rev-parse", "HEAD"]),
     gitText(path, ["rev-parse", upstream]),
     gitText(path, ["status", "--porcelain"]),
   ]);
-  if (head.trim() === remote.trim()) return null;
-  const behind = await git(path, ["merge-base", "--is-ancestor", "HEAD", upstream]).then(
-    () => true,
-    () => false,
-  );
-  if (behind && !dirty) await git(path, ["merge", "--ff-only", upstream]);
-  return behind && dirty ? `${moved}; not updated because of local changes` : null;
+  // A commit or edit made during the fetch disables updating too.
+  if (dirty.trim() || (expectedHead !== null && head.trim() !== expectedHead))
+    await setAutoUpdate(db, workspaceId, false);
+  if (!(await getAutoUpdate(db, workspaceId)))
+    return "Auto-update from remote is off for this workspace";
+  if (head.trim() !== remote.trim()) await git(path, ["reset", "--keep", remote.trim()]);
+  return null;
 }
 
 export async function openedWorktree(db: Db, workspaceId: number): Promise<string> {
@@ -705,16 +745,21 @@ function countLines(file: string): number {
 export function listWorktreeFiles(db: Db, workspaceId: number): Promise<FileTreeResult> {
   return withGit(async () => {
     const path = await openedWorktree(db, workspaceId);
-    const out = await gitText(path, [
-      "ls-files",
-      "-z",
-      "--cached",
-      "--others",
-      "--exclude-standard",
-      "--deduplicate",
+    // Git already knows which tracked files were deleted. Avoid one synchronous stat per repository file
+    // in Electron's main process, which stalls native controls on large repositories.
+    const [out, removed] = await Promise.all([
+      gitText(path, [
+        "ls-files",
+        "-z",
+        "--cached",
+        "--others",
+        "--exclude-standard",
+        "--deduplicate",
+      ]),
+      gitText(path, ["ls-files", "-z", "--deleted"]),
     ]);
-    // A file deleted in the worktree is still in the index until the deletion is staged.
-    const paths = out.split("\0").filter((p) => p && existsSync(join(path, p)));
+    const deleted = new Set(removed.split("\0"));
+    const paths = out.split("\0").filter((p) => p && !deleted.has(p));
     return { status: "ok" as const, paths };
   });
 }
@@ -812,22 +857,81 @@ export async function diffFingerprints(
   head?: string,
   kind: "diff" | "file" = "diff",
 ): Promise<Map<string, string>> {
+  return (await reviewFingerprints(db, workspaceId, base, files, head, kind)).current;
+}
+
+// Existing versions keyed diffs by base commit identity. Accept those marks only when that base's
+// file contents equal today's base, so an unrelated base update cannot discard completed review.
+export async function compatibleDiffFingerprints(
+  db: Db,
+  workspaceId: number,
+  base: string,
+  files: string[],
+  head: string | undefined,
+  legacyBases: string[],
+): Promise<Map<string, Set<string>>> {
+  return (await reviewFingerprints(db, workspaceId, base, files, head, "diff", legacyBases))
+    .accepted;
+}
+
+async function reviewFingerprints(
+  db: Db,
+  workspaceId: number,
+  base: string,
+  files: string[],
+  head: string | undefined,
+  kind: "diff" | "file",
+  legacyBases?: string[],
+) {
+  if (!files.length)
+    return { current: new Map<string, string>(), accepted: new Map<string, Set<string>>() };
   const path = await openedWorktree(db, workspaceId);
   const contents = head
     ? await readBlobs(path, head, files)
     : new Map(files.map((f) => [f, worktreeBytes(path, f)]));
-  const hash = (f: string) => {
-    const bytes = contents.get(f);
-    return (
-      (kind === "file" ? "file:" : "") +
-      createHash("sha1")
-        .update(kind === "file" ? "file" : base)
-        .update("\0")
-        .update(bytes ?? "deleted")
-        .digest("hex")
-    );
-  };
-  return new Map(files.map((f) => [f, hash(f)]));
+  const old =
+    kind === "diff" ? await readBlobs(path, base, files) : new Map<string, Buffer | null>();
+  const digest = (bytes: Buffer | null | undefined) =>
+    bytes == null ? "absent" : createHash("sha1").update(bytes).digest("hex");
+  const current = new Map(
+    files.map((f) => {
+      const bytes = contents.get(f);
+      const fingerprint =
+        kind === "file"
+          ? "file:" +
+            createHash("sha1")
+              .update("file")
+              .update("\0")
+              .update(bytes ?? "deleted")
+              .digest("hex")
+          : "diff:" +
+            createHash("sha1")
+              .update(digest(old.get(f)))
+              .update("\0")
+              .update(digest(bytes))
+              .digest("hex");
+      return [f, fingerprint] as const;
+    }),
+  );
+  const accepted = new Map([...current].map(([f, hash]) => [f, new Set([hash])]));
+  for (const previousBase of new Set(legacyBases === undefined ? [] : [base, ...legacyBases])) {
+    if (!isCommit(previousBase)) continue;
+    const previous =
+      previousBase === base
+        ? old
+        : await readBlobs(path, previousBase, files).catch(() => new Map<string, Buffer | null>());
+    for (const f of files) {
+      if (!previous.has(f) || digest(previous.get(f)) !== digest(old.get(f))) continue;
+      accepted.get(f)?.add(
+        createHash("sha1")
+          .update(previousBase)
+          .update("\0")
+          .update(contents.get(f) ?? "deleted")
+          .digest("hex"),
+      );
+    }
+  }
+  return { current, accepted };
 }
 
 // Files as text in a view of the diff: at a commit, or in the worktree without one; null where the file isn't there.

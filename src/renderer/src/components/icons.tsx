@@ -308,14 +308,6 @@ export function LockIcon() {
   );
 }
 
-export function ActivityIcon() {
-  return (
-    <Icon>
-      <path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2" />
-    </Icon>
-  );
-}
-
 // Turns while something runs.
 export function SpinnerIcon() {
   return (
@@ -328,6 +320,115 @@ export function SpinnerIcon() {
       strokeLinecap="round"
     >
       <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+    </svg>
+  );
+}
+
+export function ExpandIcon() {
+  return (
+    <Icon>
+      <path d="M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5" />
+    </Icon>
+  );
+}
+
+export function PanelRightIcon() {
+  return (
+    <Icon>
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M15 3v18" />
+    </Icon>
+  );
+}
+
+export function FileIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="size-3.5 shrink-0"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+      <path d="M14 2v6h6M8 13h8M8 17h6" />
+    </svg>
+  );
+}
+export function PersonIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="size-3.5 shrink-0"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      strokeLinecap="round"
+    >
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21v-2a8 8 0 0 1 16 0v2" />
+    </svg>
+  );
+}
+
+// A compact check with rounded ends, shared by review status indicators.
+export function CheckIcon({
+  boxed = false,
+  filled = false,
+}: { boxed?: boolean; filled?: boolean } = {}) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 16 16"
+      className="size-3.5 shrink-0"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {boxed && (
+        <rect
+          x="1.5"
+          y="1.5"
+          width="13"
+          height="13"
+          rx="2"
+          fill={filled ? "currentColor" : "none"}
+        />
+      )}
+      <path
+        d="m3.25 8.25 3 3 6.5-6.5"
+        stroke={filled ? "var(--color-neutral-950)" : "currentColor"}
+      />
+    </svg>
+  );
+}
+
+export function ExclamationSquareIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16" className="size-3.5 shrink-0" fill="none">
+      <rect x="1" y="1" width="14" height="14" rx="2.5" fill="currentColor" />
+      <path
+        d="M8 4.25v4.5"
+        stroke="var(--color-neutral-950)"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      <circle cx="8" cy="11.5" r="1" fill="var(--color-neutral-950)" />
+    </svg>
+  );
+}
+
+// GitHub's mark, shared by native and HTML toolbar buttons.
+export const githubMark =
+  "M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.65 7.65 0 0 1 4 0c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8Z";
+export function GitHubIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16" className="size-3.5" fill="currentColor">
+      <path d={githubMark} />
     </svg>
   );
 }

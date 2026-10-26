@@ -39,8 +39,7 @@ apps.
    cannot overwrite a newer revision. Inline question replies keep their own events; `changed` still follows when
    a turn ends. Session state is read once on attachment if absent from the cache; it needs no transcript replay on
    pane remount ([ADR 0018](0018-agents-over-acp.md)).
-5. **Freshness per source.** Every read from the core is stale at once, but refetched only on a `changed` event or
-   when a pane mounts; the UI holds no intervals. How fresh the source is, is the core's business:
+5. **Freshness per source.** Event-owned SQLite, workspace and git reads stay fresh in the window cache until their core `changed` event. Remounting a pane reuses them immediately; the UI holds no intervals. GitHub refresh also invalidates derived local ranges, entries and file reads because a fetch may fast-forward the worktree. How fresh the source is, is the core's business:
    - SQLite: at once, since every write emits.
    - The worktree of the workspace on screen: HEAD within 3 s; uncommitted edits when an agent turn ends and when the
      window gets focus ([ADR 0030](0030-workspace-watcher.md)).

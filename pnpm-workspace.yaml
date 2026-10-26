@@ -1,0 +1,6 @@
+allowBuilds:
+  esbuild: true
+  electron-winstaller: false
+patchedDependencies:
+  "@agentclientprotocol/claude-agent-acp@0.81.2": patches/@agentclientprotocol__claude-agent-acp@0.81.2.patch
+  "electron-glasskit@0.1.0": patches/electron-glasskit@0.1.0.patch

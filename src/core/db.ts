@@ -269,6 +269,8 @@ export const migrations = [
   drop table projects;
   alter table projects_new rename to projects;
   create unique index projects_clones on projects (github) where path is null`,
+  // Keep GitHub actor identity alongside mirrored comments for offline author filtering.
+  `alter table entries add column author_is_bot integer`,
 ];
 
 // ADR 0016: the tables as the migrations above leave them. Change this with every migration that changes a table.
@@ -311,7 +313,7 @@ type Tables = {
   reviewed_files: { workspace_id: number; path: string; fingerprint: string };
   jobs: {
     id: Generated<number>;
-    kind: "files" | "conclusions";
+    kind: "files" | "conclusions" | "guide";
     workspace_id: number;
     workspace: string;
     why: "ahead" | "view" | "submit" | "comment";
@@ -339,14 +341,6 @@ type Tables = {
     conclusion: string;
     model: string;
     edited: number;
-    created_at: string;
-  };
-  file_summaries: {
-    workspace_id: number;
-    path: string;
-    fingerprint: string;
-    summary: string;
-    model: string;
     created_at: string;
   };
   views: {
@@ -383,6 +377,7 @@ type Tables = {
     section: Generated<number | null>;
     quote_at: Generated<number | null>;
     author: Generated<string | null>;
+    author_is_bot: Generated<number | null>;
     github_id: Generated<string | null>;
     github_thread_id: Generated<string | null>;
     github_url: Generated<string | null>;

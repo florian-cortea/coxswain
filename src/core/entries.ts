@@ -45,6 +45,7 @@ export type ReviewEntry = {
   section: number | null; // on prose: its section in the view; code is then the quote
   quoteAt: number | null; // on prose: where the quote starts in the section's text
   author: string | null; // a mirrored comment's GitHub login
+  authorIsBot?: boolean | null; // null until GitHub's actor type has been learned
   githubId: string | null; // the comment on GitHub: a mirrored one's, or an entry's once posted
   githubThreadId: string | null; // on a thread's first entry: its review thread on GitHub
   githubUrl: string | null;
@@ -96,13 +97,18 @@ export const columns = [
 // ponytail: every entry the workspace ever had; page or archive them if workspaces collect hundreds.
 export type Row = Omit<ReviewEntry, "state" | "shown" | "now">;
 
-export const workspaceEntries = (db: Db, workspaceId: number): Promise<Row[]> =>
-  db
+export const workspaceEntries = async (db: Db, workspaceId: number): Promise<Row[]> => {
+  const rows = await db
     .selectFrom("entries")
-    .select(columns)
+    .select([...columns, "author_is_bot as cachedAuthorIsBot"])
     .where("workspace_id", "=", workspaceId)
     .orderBy("id")
     .execute();
+  return rows.map(({ cachedAuthorIsBot, ...row }) => ({
+    ...row,
+    authorIsBot: cachedAuthorIsBot === null ? null : !!cachedAuthorIsBot,
+  }));
+};
 
 // Files at commits, which never change. ponytail: never evicted; an LRU if long sessions grow it too big.
 const atCommit = new Map<string, string | null>();

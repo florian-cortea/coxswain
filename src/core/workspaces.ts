@@ -152,6 +152,63 @@ export async function getWorkspaceRepo(db: Db, workspaceId: number) {
 // Takes the workspace out of the sidebar, with its entries, reviewed files and agent sessions (the cascade). The
 // worktree stays on disk; adding the PR or branch again adopts it (git.ts).
 export async function removeWorkspace(db: Db, workspaceId: number): Promise<void> {
+  await db.deleteFrom("settings").where("key", "=", tabKey(workspaceId)).execute();
+  await db
+    .deleteFrom("settings")
+    .where("key", "=", `workspace.auto-update.${workspaceId}`)
+    .execute();
   await db.deleteFrom("workspaces").where("id", "=", workspaceId).execute();
+  emit({ what: "workspaces" });
+}
+
+// Per-workspace preferences avoid lost updates when two windows close different tabs.
+const tabKey = (id: number) => `workspace-tab.closed.${id}`;
+export async function getClosedWorkspaceTabs(db: Db): Promise<number[]> {
+  const rows = await db
+    .selectFrom("settings")
+    .select("key")
+    .where("key", "like", "workspace-tab.closed.%")
+    .execute();
+  return rows.flatMap(({ key }) => {
+    const suffix = key.slice("workspace-tab.closed.".length);
+    return /^\d+$/.test(suffix) ? [Number(suffix)] : [];
+  });
+}
+export async function setWorkspaceTabOpen(
+  db: Db,
+  workspaceId: number,
+  open: boolean,
+): Promise<void> {
+  const exists = await db
+    .selectFrom("workspaces")
+    .select("id")
+    .where("id", "=", workspaceId)
+    .executeTakeFirst();
+  if (!exists) return;
+  if (open) await db.deleteFrom("settings").where("key", "=", tabKey(workspaceId)).execute();
+  else
+    await db
+      .insertInto("settings")
+      .values({ key: tabKey(workspaceId), value: "closed" })
+      .onConflict((conflict) => conflict.column("key").doNothing())
+      .execute();
+  emit({ what: "workspaces" });
+}
+
+// Workspace-specific preferences survive restarts; absence means the default is enabled.
+export async function getAutoUpdate(db: Db, workspaceId: number): Promise<boolean> {
+  const row = await db
+    .selectFrom("settings")
+    .select("value")
+    .where("key", "=", `workspace.auto-update.${workspaceId}`)
+    .executeTakeFirst();
+  return row?.value !== "off";
+}
+export async function setAutoUpdate(db: Db, workspaceId: number, enabled: boolean): Promise<void> {
+  await db
+    .insertInto("settings")
+    .values({ key: `workspace.auto-update.${workspaceId}`, value: enabled ? "on" : "off" })
+    .onConflict((c) => c.column("key").doUpdateSet({ value: enabled ? "on" : "off" }))
+    .execute();
   emit({ what: "workspaces" });
 }

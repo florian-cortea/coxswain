@@ -7,8 +7,8 @@ import type { DraftThread } from "../../core/review-draft";
 import { Button, SegmentedControl } from "./components/button";
 import { TextArea } from "./components/field";
 import { SpinnerIcon } from "./components/icons";
-import { Dialog } from "./components/layout";
-import { cn, divider, muted } from "./components/styles";
+import { Dialog, DialogBody, DialogFooter } from "./components/layout";
+import { cn, muted } from "./components/styles";
 import { ErrorText } from "./components/text";
 import { count } from "./format";
 import { ProblemText } from "./PullRequest";
@@ -39,7 +39,7 @@ const posts = (t: DraftThread, hasPr: boolean) =>
     )
     .otherwise(() => "on GitHub already");
 
-// Submit Review (ADR 0037), the bottom bar's dialog, like GitHub's Finish your review: the open comment threads, each
+// Submit Review (ADR 0037), the Review menu's dialog, like GitHub's Finish your review: the open comment threads, each
 // with its comments not on GitHub yet, which go as written; editing one edits the comment. The user picks threads, then
 // sends them to the agent, copies them as a prompt, or posts them to the PR as one review with a verdict and a summary.
 // It closes once that's done, or to show a thread.
@@ -119,6 +119,7 @@ export function SubmitReviewDialog(props: {
   return (
     <Dialog
       title="Submit Review"
+      className="ui-review-dialog"
       subtitle={
         pr
           ? `To the agent, or as a review on PR #${pr.number}`
@@ -128,16 +129,16 @@ export function SubmitReviewDialog(props: {
     >
       {draft.isPending ? (
         <div
-          className={cn("flex items-center justify-center gap-2 px-4 pt-6 pb-10 text-xs", muted)}
+          className={cn("flex items-center justify-center gap-2 px-5 pt-6 pb-10 text-xs", muted)}
         >
           <SpinnerIcon /> Loading…
         </div>
       ) : (
         <>
-          <div className={cn("flex min-h-0 flex-col overflow-y-auto border-t text-xs", divider)}>
-            {draft.isError && <ErrorText className="px-4 py-2">{String(draft.error)}</ErrorText>}
-            {!threads.length && !draft.isError && (
-              <div className={cn("px-4 py-3", muted)}>
+          <DialogBody className="flex flex-col gap-3 text-[13px]">
+            {draft.isError && <ErrorText className="px-5 py-2">{String(draft.error)}</ErrorText>}
+            {event !== "APPROVE" && !threads.length && !draft.isError && (
+              <div className={cn("ui-dialog-empty rounded-xl px-4 py-5 leading-5", muted)}>
                 No open comment threads. Agent threads become one with Summarize as Comment.
               </div>
             )}
@@ -146,7 +147,10 @@ export function SubmitReviewDialog(props: {
               return (
                 <div
                   key={t.threadId}
-                  className={cn("flex gap-2 border-b px-4 py-2", divider, !on && "opacity-50")}
+                  className={cn(
+                    "ui-dialog-thread flex gap-3 rounded-xl border p-4",
+                    !on && "opacity-50",
+                  )}
                 >
                   <input
                     type="checkbox"
@@ -162,8 +166,8 @@ export function SubmitReviewDialog(props: {
                       })
                     }
                   />
-                  <div className="flex min-w-0 flex-1 flex-col gap-1">
-                    <div className={cn("flex items-baseline gap-2", muted)}>
+                  <div className="flex min-w-0 flex-1 flex-col gap-3">
+                    <div className={cn("flex flex-wrap items-baseline gap-x-2 gap-y-1", muted)}>
                       <button
                         className="min-w-0 flex-1 truncate text-left hover:underline"
                         title="Show the thread"
@@ -204,13 +208,14 @@ export function SubmitReviewDialog(props: {
                 </div>
               );
             })}
-          </div>
-          <div className="flex shrink-0 flex-col gap-2 px-4 py-3 text-xs">
+          </DialogBody>
+          <div className="ui-review-summary flex shrink-0 flex-col gap-3 text-[13px]">
             {pr && (
               <TextArea
                 long
                 rows={2}
                 className="select-text"
+                aria-label="Review summary"
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
                 onSubmit={() => void post()}
@@ -218,49 +223,61 @@ export function SubmitReviewDialog(props: {
               />
             )}
             {problem && <ProblemText problem={problem} />}
-            <div className="flex items-center gap-2">
-              {pr && !own && (
+            <div className="flex flex-wrap items-center gap-2">
+              {pr && (
                 <SegmentedControl
                   value={event}
                   onChange={setEvent}
                   options={(["COMMENT", "APPROVE", "REQUEST_CHANGES"] as const).map((e) => ({
                     value: e,
                     label: eventLabels[e],
+                    disabled: own && e !== "COMMENT",
+                    title:
+                      own && e !== "COMMENT"
+                        ? "GitHub doesn’t allow reviewing your own PR with this verdict"
+                        : undefined,
                   }))}
                 />
               )}
-              <div className="flex-1" />
-              <Button
-                title="Put the picked threads on the clipboard, as the message the agent would get"
-                disabled={!toAgent.length}
-                onClick={() => void copy()}
-              >
-                Copy as Prompt
-              </Button>
-              <Button
-                variant={pr ? undefined : "primary"}
-                title="Send the picked threads to the agent pane's session"
-                disabled={!toAgent.length}
-                onClick={async () => {
-                  await save();
-                  props.onSendToAgent(ids(toAgent));
-                  props.onClose();
-                }}
-              >
-                Send to Agent
-              </Button>
-              {pr && (
-                <Button
-                  variant="primary"
-                  title="Post the picked threads' comments to the PR as one review, after asking"
-                  disabled={posting || (!toPost.length && !body.trim() && event === "COMMENT")}
-                  onClick={() => void post()}
-                >
-                  {posting ? "Posting…" : "Post to GitHub…"}
-                </Button>
-              )}
             </div>
+            {pr && own && (
+              <p className={cn("text-xs", muted)}>
+                You can comment on your own PR. Approve and Request Changes are available on other
+                authors’ PRs.
+              </p>
+            )}
           </div>
+          <DialogFooter>
+            <Button
+              title="Put the picked threads on the clipboard, as the message the agent would get"
+              disabled={!toAgent.length}
+              onClick={() => void copy()}
+            >
+              Copy as Prompt
+            </Button>
+            <Button
+              variant={pr ? undefined : "primary"}
+              title="Send the picked threads to the agent pane's session"
+              disabled={!toAgent.length}
+              onClick={async () => {
+                await save();
+                props.onSendToAgent(ids(toAgent));
+                props.onClose();
+              }}
+            >
+              Send to Agent
+            </Button>
+            {pr && (
+              <Button
+                variant="primary"
+                title="Post the picked threads' comments to the PR as one review, after asking"
+                disabled={posting || (!toPost.length && !body.trim() && event === "COMMENT")}
+                onClick={() => void post()}
+              >
+                {posting ? "Posting…" : "Post to GitHub…"}
+              </Button>
+            )}
+          </DialogFooter>
         </>
       )}
     </Dialog>

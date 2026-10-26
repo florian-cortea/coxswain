@@ -19,14 +19,21 @@ gracefully when it's wrong. It must still embed file diffs as the user reviews t
 
 ## Decision
 
-1. **A view is a pinned range and a list of markdown sections** (`views` table: title, `guide` flag, base, head,
-   sections as JSON). A view can explain existing code with no changes in its range (#31). Each section starts with a `## ` heading, which is its entry in the table of contents.
+1. **The workspace’s Guide is a pinned range and a list of markdown sections** (legacy `views` table: title, `guide` flag, base, head,
+   sections as JSON). ADR 0023 defines its single identity and in-place updates; View is an internal storage name, not a library of user-facing documents. Each section starts with a `## ` heading, which labels its explanation column beside its embedded cards.
    GitHub-flavoured markdown, rendered by `react-markdown` and `remark-gfm`, as in chat and threads.
 2. **Fenced blocks are the extension points.** Their info string says what they are:
    - ` ```mermaid `: a diagram, drawn by [Mermaid](https://mermaid.js.org) (`mermaid`, loaded only when one shows),
-     `securityLevel: "strict"`, in the system theme and redrawn when it changes. Charts are mermaid too (`pie`,
+     `securityLevel: "strict"`, in a custom base theme that follows light/dark appearance and redraws when it changes. Charts are mermaid too (`pie`,
      `xychart` for bars and lines), so data needs no second library; they get a palette of their own
-     (`chartTheme`), since the diagram themes draw them in greys. Markdown component types are
+     (`diagramConfig`), since the diagram themes draw them in greys. The shared configuration gives diagrams system
+     typography, neutral rounded nodes, quiet connectors and more space; charts use a coordinated categorical palette.
+     Mermaid secure config keys keep source init/frontmatter from overriding the app theme, CSS and typography.
+     Inline SVGs fit the available width and are bounded to 560 px or 65% of the viewport height; expansion retains the full diagram.
+     Flowchart decisions render as dashed rounded boxes, with pill-shaped edge labels, matching the reference UI.
+     `diagramPresentation` reads the parsed flowchart model and appends shape/class overrides only for rendering;
+     saved Mermaid source and connections are unchanged. Nonstandard escaped node IDs retain their original shape.
+     It is used for both rendering and validation. Markdown component types are
      stable across parent renders so opening the command palette or scrolling does not remount diagrams. `write_section` has the window draw
      each diagram before saving the section (main asks the renderer over IPC, `setDiagramCheck`), and refuses it with
      mermaid's error if one doesn't draw, so the agent fixes it. One that still fails (e.g. saved while no window was
@@ -46,6 +53,14 @@ gracefully when it's wrong. It must still embed file diffs as the user reviews t
    `add_group`; `add_explanation` and `add_finding` stay; `remove_section` and `list_views` manage views
    ([ADR 0023](0023-guides-made-by-the-agent-pane.md)). `start_view`'s result carries the syntax and how to write a
    guide or another view.
+
+Guide sections render their heading and prose beside their embedded cards, with no separate navigation sidebar
+or file overview. At 960 px of canvas width the layout uses two columns; below that it stacks the explanation
+above the cards. The explanation sticks within its section below the floating toolbar and scrolls internally
+when too tall to fit between the bars. Prose keeps its original part indices and order for quote anchors.
+Rendered diagrams expand through an understated corner icon into a large preview with trackpad pinch zoom
+and unbounded two-axis panning, without a toolbar. Supported Macs use a native Liquid Glass child panel (ADR 0042);
+other systems use the shared solid dialog. A fresh SVG has distinct IDs, keeping inline diagrams intact.
 
 ## Alternatives considered
 

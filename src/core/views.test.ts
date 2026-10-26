@@ -1,3 +1,4 @@
+import { setDefaultPrompt } from "./prompt-settings.ts";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -11,7 +12,7 @@ import { openDatabase } from "./db.ts";
 const temp = mkdtempSync(join(os.tmpdir(), "coxswain-views-"));
 const home = mock.method(os, "homedir", () => temp);
 syncBuiltinESMExports();
-const { listFilesAt, readFileAt, snapshot } = await import("./git.ts");
+const { listFilesAt, listWorktreeFiles, readFileAt, snapshot } = await import("./git.ts");
 const { parseSection, viewTools, listViews, setDiagramCheck, turnEnded } =
   await import("./views.ts");
 const { listReviewed, setReviewed } = await import("./reviewed.ts");
@@ -85,12 +86,25 @@ test("views without diffs pin files, validate embeds and keep file review separa
     })
     .execute();
   const tools = viewTools(db, 1);
+  assert.ok(!tools.some((tool) => tool.name === "file_summaries"));
+  assert.equal(
+    tools.find((tool) => tool.name === "list_changed_files")?.annotations?.readOnlyHint,
+    true,
+  );
   const call = (name: string, args: object) =>
     tools.find((tool) => tool.name === name)!.call(args as never);
-  const start = await call("start_view", { title: "Trace", guide: false });
+  await setDefaultPrompt(
+    db,
+    "guide",
+    "Explain shared infrastructure first, using detailed sections.",
+  );
+  const start = await call("start_guide", { title: "Trace", guide: false });
+  assert.match(start, /Explain shared infrastructure first, using detailed sections/);
+  assert.doesNotMatch(start, /separate Tests section/);
   assert.match(start, /none\. You can still explain existing code/);
   const [view] = await listViews(db, 1);
   assert.equal(view.base, view.head);
+  assert.equal(await call("list_changed_files", {}), "The view has no changed files.");
   const worktree = join(temp, "coxswain/worktrees/test/repo/branch-feature");
   await call("write_section", { view: view.id, markdown: "## Overview\nNo diff needed." });
   await call("write_section", {
@@ -195,15 +209,15 @@ test("views without diffs pin files, validate embeds and keep file review separa
   });
   assert.deepEqual(await listFilesAt(db, 1, view.head), ["a.ts", "b.ts", "directory/a b.ts"]);
 
-  await call("start_view", { title: "Mixed", guide: false });
+  await call("start_guide", { title: "Mixed", guide: false });
   await call("write_section", {
-    markdown: "## Mixed\n```diff path=b.ts\n```\n```file path=a.ts\n```",
+    markdown: '## Mixed\n```diff path=b.ts\n```\n```file path="directory/a b.ts"\n```',
   });
   await assert.rejects(
-    call("write_section", { markdown: "## Duplicate kind\n```diff path=a.ts\n```" }),
-    /already embedded/,
+    call("write_section", { markdown: "## Duplicate kind\n```file path=b.ts\n```" }),
+    /already embedded|embed its diff in a guide/,
   );
-  await call("start_view", { title: "Guide", guide: true });
+  await call("start_guide", { title: "Guide", guide: true });
   await assert.rejects(
     call("write_section", { markdown: "## Changed\n```file path=a.ts\n```" }),
     /embed its diff in a guide/,
@@ -213,7 +227,7 @@ test("views without diffs pin files, validate embeds and keep file review separa
     cwd: worktree,
     encoding: "utf8",
   }).trim();
-  await call("start_view", {
+  await call("start_guide", {
     title: "Commit",
     guide: false,
     base: commit.slice(0, 8),
@@ -222,19 +236,28 @@ test("views without diffs pin files, validate embeds and keep file review separa
   const [ofCommit] = await listViews(db, 1);
   assert.deepEqual([ofCommit.base, ofCommit.head, ofCommit.worktree], [commit, commit, false]);
   await assert.rejects(
-    call("start_view", { title: "Nope", guide: false, head: "abcdef1234" }),
+    call("start_guide", { title: "Nope", guide: false, head: "abcdef1234" }),
     /isn't a commit/,
   );
-  await call("start_view", { title: "Named", guide: false, base: "HEAD~0", head: "HEAD" });
+  await call("start_guide", { title: "Named", guide: false, base: "HEAD~0", head: "HEAD" });
   assert.equal((await listViews(db, 1))[0].head, commit, "names resolve to their commit");
   for (const rev of ["--output=x", "HEAD..main", "a b"])
     await assert.rejects(
-      call("start_view", { title: "Bad", guide: false, head: rev }),
+      call("start_guide", { title: "Bad", guide: false, head: rev }),
       /Not a commit/,
     );
-  await call("start_view", { title: "Guide", guide: true });
+  await call("start_guide", { title: "Guide", guide: true });
   const coverage = await call("write_section", {
     markdown: "## Changes\n```diff path=a.ts\n```\n```diff path=b.ts\n```",
   });
   assert.match(coverage, /Every changed file is in a section/);
+  writeFileSync(join(worktree, "untracked.ts"), "new");
+  rmSync(join(worktree, "b.ts"));
+  const tree = await listWorktreeFiles(db, 1);
+  assert.equal(tree.status, "ok");
+  if (tree.status === "ok") {
+    assert.ok(tree.paths.includes("untracked.ts"));
+    assert.ok(tree.paths.includes("directory/a b.ts"));
+    assert.ok(!tree.paths.includes("b.ts"), "unstaged deletions stay out of the file tree");
+  }
 });

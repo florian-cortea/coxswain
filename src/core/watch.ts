@@ -1,6 +1,12 @@
 import type { Db } from "./db";
 import { emit } from "./events.ts";
-import { headCommit, openWorktree, upstreamCommit, type WorktreeResult } from "./git.ts";
+import {
+  headCommit,
+  openWorktree,
+  upstreamCommit,
+  protectLocalWorkspace,
+  type WorktreeResult,
+} from "./git.ts";
 import type { PullRequestResult } from "./github.ts";
 import { readPullRequest } from "./pull-requests.ts";
 
@@ -118,6 +124,7 @@ export function watchWorkspace(db: Db, workspaceId: number | null) {
         headCommit(db, workspaceId),
         upstreamCommit(db, workspaceId),
       ]);
+      if (!checking.has(workspaceId)) await protectLocalWorkspace(db, workspaceId);
       const was = w.head;
       w.head = head;
       if (watched !== w) return;

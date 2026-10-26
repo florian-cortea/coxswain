@@ -90,3 +90,39 @@ test("a snapshot is HEAD when clean, else a stable commit with the uncommitted f
   assert.equal(git("status", "--porcelain"), status, "the worktree's own index is untouched");
   assert.equal(git("rev-parse", `refs/coxswain/snapshots/${sha}`), sha);
 });
+
+test("closed workspace tabs survive restart without deleting workspaces, and reopen independently", async () => {
+  const { getClosedWorkspaceTabs, setWorkspaceTabOpen } = await import("./workspaces.ts");
+  const path = join(temp(), "tabs.db");
+  let db = openDatabase(path);
+  await db
+    .insertInto("projects")
+    .values({ id: 1, github: "acme/repo", name: "repo", last_opened_at: "" })
+    .execute();
+  for (const id of [1, 2])
+    await db
+      .insertInto("workspaces")
+      .values({
+        id,
+        project_id: 1,
+        pr_number: id,
+        branch: null,
+        base_branch: null,
+        last_opened_at: "",
+      })
+      .execute();
+  assert.deepEqual(await getClosedWorkspaceTabs(db), []);
+  await Promise.all([setWorkspaceTabOpen(db, 1, false), setWorkspaceTabOpen(db, 2, false)]);
+  await db.destroy();
+  db = openDatabase(path);
+  try {
+    assert.deepEqual((await getClosedWorkspaceTabs(db)).sort(), [1, 2]);
+    assert.equal((await listWorkspaces(db, 1)).length, 2);
+    await setWorkspaceTabOpen(db, 1, true);
+    assert.deepEqual(await getClosedWorkspaceTabs(db), [2]);
+    await setWorkspaceTabOpen(db, 2, false);
+    assert.deepEqual(await getClosedWorkspaceTabs(db), [2]);
+  } finally {
+    await db.destroy();
+  }
+});

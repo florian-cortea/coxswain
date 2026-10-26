@@ -1,0 +1,69 @@
+/* Shared by React Guide rows and Pierre's shadow-root rows. */
+[data-sidebar-row] {
+  position: relative;
+  isolation: isolate;
+  border-radius: 12px !important;
+  background: transparent !important;
+}
+[data-sidebar-row]::before {
+  content: "";
+  position: absolute;
+  inset: 1.5px 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--sidebar-row-highlight, transparent);
+  outline: none !important;
+  pointer-events: none;
+}
+[data-sidebar-row][data-sidebar-current="true"] {
+  --sidebar-row-highlight: var(--guide-selected-bg);
+}
+[data-sidebar-row]:hover,
+[data-sidebar-row][data-item-context-hover="true"] {
+  --sidebar-row-highlight: var(--guide-hover-bg);
+}
+[data-sidebar-row]:focus-visible {
+  outline: 1px solid var(--trees-accent, Highlight);
+  outline-offset: -1px;
+}
+.sidebar-file-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  flex: 0 1 auto;
+  font-weight: 400;
+}
+.sidebar-file-label-name,
+.sidebar-file-label-folder {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.sidebar-file-label-name {
+  flex: 0 1 auto;
+}
+.sidebar-file-label-folder {
+  flex: 0 1 auto;
+  max-width: 45%;
+  font-size: 11px;
+  color: light-dark(#737373, #a3a3a3);
+}
+.sidebar-file-label[data-directory="true"] {
+  font-weight: 600;
+}
+.sidebar-file-label[data-deleted="true"] .sidebar-file-label-name {
+  text-decoration: line-through;
+}
+
+.sidebar-file-changed {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--reviewed-color);
+}

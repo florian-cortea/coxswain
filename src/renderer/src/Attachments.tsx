@@ -41,7 +41,7 @@ export function Attachments({
   if (!attachments.length) return null;
   return (
     <div
-      className="flex max-h-44 flex-wrap items-start gap-1.5 overflow-y-auto p-2"
+      className="flex max-h-44 flex-wrap items-start gap-2 overflow-y-auto p-3"
       aria-label="Attachments"
     >
       {attachments.map((a) => (

@@ -133,12 +133,15 @@ type RunOptions = {
   mcp?: acp.McpServer[];
   picks?: Picks;
   oneShot?: string;
+  discovery?: boolean;
+  strictPicks?: boolean;
 };
-// onPermission resolves with the option picked, or null to cancel. Without it, every request is rejected. onQueued:
+// onPermission resolves with the option picked, or null to cancel. Returning void leaves the request pending
+// for answerPermission from the session projection; a bare run without a handler rejects. onQueued:
 // runTurn's message waits behind the running turn.
 type RunHandlers = {
   onEntry?: (entry: ChatEntry) => void;
-  onPermission?: (p: Permission) => Promise<string | null>;
+  onPermission?: (p: Permission) => Promise<string | null> | void;
   onQueued?: () => void;
 };
 
@@ -187,10 +190,8 @@ const agents: Record<
       },
     }),
     auto: "auto",
-    // Left to itself the adapter resolves the user's settings model, and some aliases differently from Claude Code
-    // ("opus[1m]" became Opus 4.8, not 5.5, in 0.81.2), so Claude Code's own default is picked.
-    // ponytail: so a model in the user's settings is ignored; resolve it like Claude Code if someone relies on it.
-    picks: { model: "default" },
+    // The adapter's canonical Opus choice currently resolves to Opus 5.5.
+    picks: { model: "opus" },
   },
   codex: {
     // The user's own `codex`, like claude. Instructions go in as Codex config, for every session: all are the pane's.
@@ -220,13 +221,11 @@ const agents: Record<
 const paneContext = `You are running inside coxswain, a desktop app for exploring code, reviewing changes and building features. The user sees
 the diff beside this chat. An optional leading [Attachments · …] line is display metadata; the message below it and
 the attached content are the user's input. Messages starting with [Comment on …] or [Review · …] are review comments they sent you from
-the diff: make the change asked for, or answer the question. A message starting with [View · …] asks for a view: the
-prompt after the --- line says what to make, and what they typed above it says what to focus on. The mcp__coxswain tools put views on the canvas beside the
-diff (start_view, write_section, remove_section, list_views, file_summaries): a guide through the changes, or a view of one aspect (the data model, a data flow, or
-anything the user asks to see), in markdown with diagrams, embedded source files and file diffs, even without changes; explanations of lines
-(add_explanation); and, when they ask for a review, findings on lines (add_finding). Use them, and your review skills,
-when the user asks for a guide, a review, or to trace, explain or visualise code, with or without changes. A request
-that starts "For … only (start_view with base … and head …)" is about that part of the changes: pass those to start_view.`;
+the diff: make the change asked for, or answer the question. The mcp__coxswain tools update the workspace’s single Guide
+(start_guide, write_section, remove_section, read_guide, list_changed_files): concise thematic sections beside embedded
+diffs, with diagrams when useful. Use the Guide’s existing identity; updates replace it in place. Add explanations of
+lines with add_explanation and, when asked for a review, findings with add_finding. Read actual diffs before writing.
+`;
 
 // PATH as the app got it, like `gh` (a packaged app takes the login shell's, src/main/index.ts).
 export const claudeOnPath = () => onPath("claude", "Claude Code");
@@ -444,11 +443,12 @@ async function askPermission(
   const id = randomUUID();
   const optionId = await new Promise<string | null>((resolve) => {
     pending.set(id, { sessionId, resolve });
-    ask({
+    const response = ask({
       id,
       title: p.toolCall.title ?? "Use a tool",
       options: p.options.map((o) => ({ id: o.optionId, name: o.name, kind: o.kind })),
-    }).then(resolve);
+    });
+    if (response) void response.then(resolve, () => resolve(null));
   });
   pending.delete(id);
   sessionStates.permission(sessionId, null);
@@ -500,21 +500,25 @@ async function openSession(name: Agent, o: RunOptions): Promise<{ a: Adapter; se
     }));
   a.open.add(sessionId);
   config ??= configs.get(sessionId);
-  if (config) configOf(name, sessionId, config, !o.oneShot);
+  if (config) configOf(name, sessionId, config, !o.oneShot && !o.discovery);
   for (const pick of ["model", "effort"] as const) {
     const value = o.picks?.[pick] ?? agents[name].picks[pick];
     const option: acp.SessionConfigOption | undefined = config?.find(
       (c) => c.category === category[pick],
     );
     if (!value || option?.type !== "select") continue;
-    const picked = pickOf(choicesOf(option), value, !!o.oneShot);
+    const picked = pickOf(
+      choicesOf(option),
+      value,
+      !!o.oneShot || !!o.discovery || !!o.strictPicks,
+    );
     if (!picked || option.currentValue === picked) continue;
     const set: acp.SetSessionConfigOptionResponse = await a.agent.request(
       acp.methods.agent.session.setConfigOption,
       { sessionId, configId: option.id, value: picked },
     );
     config = set.configOptions;
-    configOf(name, sessionId, set.configOptions, !o.oneShot);
+    configOf(name, sessionId, set.configOptions, !o.oneShot && !o.discovery);
   }
   await a.agent.request(acp.methods.agent.session.setMode, {
     sessionId,
@@ -582,13 +586,20 @@ export async function run(name: Agent, o: RunOptions, handlers: RunHandlers = {}
   }
 }
 
-// ADR 0029: one run of a file summary job, in a session of its own that's closed after: no tools or MCP servers, and
+// ADR 0038: one run of a background job, in a session of its own that's closed after: no tools or MCP servers, and
 // instructions in place of Claude Code's system prompt (Codex keeps its own, with the pane's). model: "" the agent's
 // default. Resolves with the reply's text and the model it ran on, by the agent's name for it. Rejects with fatal set
 // when trying again can't help: the agent isn't installed, or doesn't offer the model.
 export async function askOnce(
   name: Agent,
-  o: { cwd: string; prompt: string; model: string; instructions: string; signal: AbortSignal },
+  o: {
+    cwd: string;
+    prompt: string;
+    model: string;
+    effort?: string;
+    instructions: string;
+    signal: AbortSignal;
+  },
 ): Promise<{ text: string; model: string | null }> {
   const fatal = (message: string) => Object.assign(new Error(message), { fatal: true });
   let opened: Awaited<ReturnType<typeof openSession>>;
@@ -597,7 +608,7 @@ export async function askOnce(
       cwd: o.cwd,
       prompt: o.prompt,
       oneShot: o.instructions,
-      picks: o.model ? { model: o.model } : {},
+      picks: { model: o.model, effort: o.effort ?? "" },
     });
   } catch (e) {
     const message = (e as Error).message;
@@ -611,6 +622,11 @@ export async function askOnce(
     if (o.model && choices.length && !pickOf(choices, o.model, true))
       throw fatal(
         `${name} has no model "${o.model}" (it has ${choices.map((c) => c.value).join(", ")}); pick another in Settings`,
+      );
+    const effort = configs.get(sessionId)?.find((c) => c.category === category.effort);
+    if (o.effort && (effort?.type !== "select" || !pickOf(choicesOf(effort), o.effort, false)))
+      throw fatal(
+        `${name} has no effort level "${o.effort}" for this model; choose another effort level`,
       );
     const ranOn =
       option?.type === "select"
@@ -699,7 +715,7 @@ export async function closeWorkspaceSessions(db: Db, workspaceId: number): Promi
   );
 }
 
-// Whether an agent is at work on a turn or a file summary, which stopping the adapters would end.
+// Whether an agent is at work on a turn or a background job, which stopping the adapters would end.
 // ponytail: the agent's own turns and background tasks between turns don't count; track them if a relaunch cuts one
 // short.
 export const agentsBusy = () => listening.size > 0;
@@ -919,15 +935,17 @@ export async function startAgentSession(
   db: Db,
   workspaceId: number,
   agent?: Agent,
+  options: { select?: boolean; picks?: Picks; title?: string } = {},
 ): Promise<AgentSession> {
-  const picked = !!agent;
-  if (agent) await saveSetting(db, "agent", agent);
+  const picked = !!agent && options.select !== false;
+  if (picked && agent) await saveSetting(db, "agent", agent);
   agent ??= await newSessionAgent(db);
   const cwd = await openedWorktree(db, workspaceId);
   const id = await newSession(agent, {
     cwd,
     mcp: await paneTools(db, workspaceId),
-    picks: await agentPicks(db, agent),
+    picks: options.picks ?? (await agentPicks(db, agent)),
+    strictPicks: !!options.picks,
   });
   await sessionStates.read(id, async () => []);
   const now = new Date().toISOString();
@@ -938,7 +956,8 @@ export async function startAgentSession(
       agent,
       agent_session_id: id,
       created_at: now,
-      used_at: now,
+      used_at: options.select === false ? "" : now,
+      title: options.title ?? null,
     })
     .returning(columns)
     .executeTakeFirstOrThrow();
@@ -978,9 +997,9 @@ export async function signIn(name: Agent): Promise<void> {
   sessionStates.signedIn();
 }
 
-// Whether the agent pane shows, left of the canvas. Global; shown unless hidden.
+// Whether the agent pane shows, right of the canvas. Global; collapsed until explicitly opened.
 export async function getAgentPaneOpen(db: Db): Promise<boolean> {
-  return (await setting(db, "agent-pane.open")) !== "false";
+  return (await setting(db, "agent-pane.open")) === "true";
 }
 
 export async function setAgentPaneOpen(db: Db, open: boolean) {
@@ -1010,22 +1029,51 @@ export async function agentSessionWorkspace(db: Db, agentSessionId: string): Pro
 // ponytail: the effort levels are the latest session's model's; a model picked before a session starts shows the old
 // levels until then, and a level the new model hasn't is skipped.
 export type AgentPicks = Partial<Record<Pick, { current: string; choices: Choice[] }>>;
-export async function listAgentPicks(
+const modelDiscoveries = new Map<string, { expires: number; result: Promise<AgentPicks> }>();
+export function listAgentPicks(
   db: Db,
   workspaceId: number,
   agent: Agent,
+  model?: string,
 ): Promise<AgentPicks> {
-  const picks = await agentPicks(db, agent);
-  if (!latest.has(agent)) {
+  if (model === undefined) return readAgentPicks(db, workspaceId, agent);
+  const key = JSON.stringify([workspaceId, agent, model]);
+  const cached = modelDiscoveries.get(key);
+  if (cached && cached.expires > Date.now()) return cached.result;
+  const result = readAgentPicks(db, workspaceId, agent, model).catch((error) => {
+    if (modelDiscoveries.get(key)?.result === result) modelDiscoveries.delete(key);
+    throw error;
+  });
+  modelDiscoveries.set(key, { expires: Date.now() + 5 * 60_000, result });
+  return result;
+}
+
+async function readAgentPicks(
+  db: Db,
+  workspaceId: number,
+  agent: Agent,
+  model?: string,
+): Promise<AgentPicks> {
+  const picks = model === undefined ? await agentPicks(db, agent) : { model, effort: "" };
+  let options = latest.get(agent);
+  // Guide pickers query the selected model in a disposable session without changing chat defaults/configs.
+  if (model !== undefined || !options) {
     const cwd = await openedWorktree(db, workspaceId);
-    const { a, sessionId } = await openSession(agent, { cwd, prompt: "", picks });
+    const { a, sessionId } = await openSession(agent, {
+      cwd,
+      prompt: "",
+      picks,
+      discovery: model !== undefined,
+    });
+    options = configs.get(sessionId);
     configs.delete(sessionId);
     a.open.delete(sessionId);
-    await a.agent.request(acp.methods.agent.session.close, { sessionId }).catch(() => {});
+    // Options are ready: the adapter's potentially slow SDK teardown must not hold up the picker.
+    void a.agent.request(acp.methods.agent.session.close, { sessionId }).catch(() => {});
   }
   const result: AgentPicks = {};
   for (const pick of ["model", "effort"] as const) {
-    const option = latest.get(agent)?.find((c) => c.category === category[pick]);
+    const option = options?.find((c) => c.category === category[pick]);
     if (option?.type !== "select") continue;
     const choices = choicesOf(option);
     const value = picks[pick] ?? agents[agent].picks[pick];
@@ -1132,6 +1180,7 @@ export async function runTurn(
   prompt: string,
   handlers: RunHandlers,
   attachments: Attachment[] = [],
+  options: { select?: boolean; picks?: Picks; restorePicks?: boolean; onStart?: () => void } = {},
 ): Promise<TurnResult> {
   let started = false;
   let result: TurnResult = { status: "ok" };
@@ -1144,7 +1193,7 @@ export async function runTurn(
     const attachmentId = attachments.length
       ? await saveAttachments(db, agentSessionId, attachments)
       : null;
-    await pickAgentSession(db, agentSessionId);
+    if (options.select !== false) await pickAgentSession(db, agentSessionId);
     const entry = withComment({
       kind: "user",
       text: prompt,
@@ -1178,6 +1227,7 @@ export async function runTurn(
     }
     if (!go) return { status: "unsent" };
     started = true;
+    options.onStart?.();
     const streaming: RunHandlers = {
       onEntry: (entry) => {
         sessionStates.entry(agentSessionId, entry);
@@ -1185,12 +1235,20 @@ export async function runTurn(
       },
       onPermission: (permission) => {
         sessionStates.permission(agentSessionId, permission);
-        return handlers.onPermission?.(permission) ?? Promise.resolve(null);
+        return handlers.onPermission?.(permission);
       },
     };
     streaming.onEntry?.(entry);
     // ADR 0028: the worktree before and after, for the turn's diff. A stopped or failed turn may have changed it too.
     const before = await snapshotOf(cwd).catch(() => null);
+    const previousPicks: Picks = {};
+    if (options.restorePicks)
+      for (const pick of ["model", "effort"] as const) {
+        const config = configs
+          .get(agentSessionId)
+          ?.find((option) => option.category === category[pick]);
+        if (config?.type === "select") previousPicks[pick] = String(config.currentValue);
+      }
     try {
       await run(
         agent,
@@ -1200,11 +1258,23 @@ export async function runTurn(
           attachments,
           session: agentSessionId,
           mcp: await paneTools(db, workspaceId),
-          picks: await agentPicks(db, agent),
+          picks: options.picks ?? (await agentPicks(db, agent)),
+          strictPicks: !!options.picks,
         },
         streaming,
       );
     } finally {
+      if (options.restorePicks && Object.keys(previousPicks).length) {
+        await openSession(agent, {
+          cwd,
+          prompt: "",
+          session: agentSessionId,
+          mcp: await paneTools(db, workspaceId),
+          picks: previousPicks,
+        }).catch((error) =>
+          console.warn("Could not restore session choices after Guide turn", error),
+        );
+      }
       turnEnded(workspaceId);
       const after = before && (await snapshotOf(cwd).catch(() => null));
       if (after && after !== before)

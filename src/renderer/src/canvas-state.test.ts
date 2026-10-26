@@ -16,6 +16,11 @@ test("default canvas waits for views and snapshot instead of flashing the diff",
   assert.equal(defaultViewId({}, views, "head"), 7);
   assert.equal(defaultViewId({}, views, "other"), null);
   assert.equal(
+    defaultViewId({}, [{ ...views[0], guide: true }], "other"),
+    7,
+    "the previous guide remains readable while its replacement runs",
+  );
+  assert.equal(
     defaultViewId({}, [{ id: 8, head: "commit", worktree: false }] as View[], "other"),
     8,
     "a view of a commit never goes stale",
@@ -26,7 +31,11 @@ test("default canvas waits for views and snapshot instead of flashing the diff",
     null,
     "explicit Diff stays selected",
   );
-  assert.equal(defaultViewId({ viewId: 3 }, views, "head"), 3, "remembered view wins");
+  assert.equal(
+    defaultViewId({ viewId: 3 }, views, "head"),
+    7,
+    "legacy view selection opens the workspace Guide",
+  );
   assert.equal(defaultViewId({ scope: "unpushed" }, views, "head"), null);
 });
 
@@ -58,4 +67,15 @@ test("thread navigation clears conflicting selections and returns to the thread'
     subject: "Comment range",
   });
   assert.equal(threadLocation({ ...root, viewId: null, head: null }).commit, undefined);
+});
+
+test("a pinned saved Guide is readable before the live snapshot or network check finishes", () => {
+  const saved = [{ id: 7, guide: true, head: "pinned", base: "base", worktree: true }] as View[];
+  assert.equal(defaultViewId({}, saved, null, false), 7);
+  assert.equal(
+    defaultViewId({ viewId: null }, saved, null, false),
+    null,
+    "live Changes does not use the saved Guide",
+  );
+  assert.equal(defaultViewId({ scope: "unpushed" }, saved, null, false), null);
 });

@@ -12,7 +12,7 @@ coxswain only ran from a checkout (`pnpm dev`, `pnpm start`). People who want to
 report needs to say which build it's from. Every change should also pass the checks in [AGENTS.md](../../AGENTS.md)
 before it lands, not only on the author's machine.
 
-The app has no native Node modules (SQLite is `node:sqlite`), and the agents it runs are the user's own `claude` and
+SQLite uses `node:sqlite`; native Liquid Glass adds an native macOS addon (ADR 0042), and the agents it runs are the user's own `claude` and
 `codex` ([ADR 0018](0018-agents-over-acp.md)), so a package needs only our JavaScript and Electron.
 
 ## Decision
@@ -21,14 +21,29 @@ The app has no native Node modules (SQLite is `node:sqlite`), and the agents it 
    (arm64 and x64), an NSIS installer for Windows x64, an AppImage for Linux x64. The agent SDKs' bundled
    `claude` and `codex` binaries are left out; the user's own are used. Files are named
    `coxswain-<version>-<os>-<arch>.<ext>` (the AppImage says `x86_64` for x64).
+   The `electron-glasskit` package is unpacked from ASAR, including arm64/x64 native binaries and Swift
+   libraries. It stays external to the main bundle and supplies no-op support on other platforms.
+   The macOS bundle uses `resources/icon.icns`. On macOS, `pnpm icon` renders the saved
+   `resources/coxswain.icon` with Icon Composer 27's `ictool` (macOS, Default, design generation 27).
+   AppKit adds 100 px transparent Dock padding and resamples for `icon.png` and an ICNS with 16–1024 px
+   representations, packaged with `iconutil`. No effects are redrawn and the source document is not modified.
+   Icon Composer is found in `/Applications` or Xcode, or via `ICON_COMPOSER_APP`. These exports are checked
+   in, so release runners do not need Swift or Icon Composer. The dev Dock uses the same PNG. Raster icon
+   explorations are excluded from bundles.
+   `pnpm dev` and `pnpm start` launch through `scripts/run-electron.mjs`. On macOS it creates a cached
+   `coxswain.app` under ignored `node_modules/.cache`, with coxswain bundle/display names and a distinct
+   development bundle identifier, then ad-hoc signs the outer bundle. Electron’s original runtime stays
+   untouched. The cache is keyed by Electron version and recipe version; `ELECTRON_EXEC_PATH` remains
+   an explicit override. Other platforms launch the ordinary runtime.
+   The `.icon` project is editable source; it is not compiled into Electron's bundle as a native layered icon.
 2. **Releases start from a button.** Actions → _Release_ → _Run workflow_ with a version (`.github/workflows/release.yml`)
-   sets it in `package.json`, commits _Release vX_ to `main`, tags `vX`, builds the tag on one runner per OS and
+   sets it in `package.json`, commits _Release vX_ to `main` when the version changes, tags `vX`, builds the tag on one runner per OS and
    creates the GitHub release with the files and GitHub's generated notes (the PRs merged since the last release).
    A version with a pre-release part (`0.1.0-rc.1`) makes a GitHub pre-release. Pushing a tag by hand does nothing.
 3. **The build knows its version and commit**: `__VERSION__` (from `package.json`) and `__COMMIT__`
    (`git rev-parse`) are defined in the renderer and shown in Settings.
-4. **CI runs typecheck, lint, format check and build** on every push to `main` and every pull request
-   (`.github/workflows/ci.yml`).
+4. **CI runs tests, typecheck, lint, format check and build** on every push to `main` and every pull request
+   (`.github/workflows/ci.yml`). CI and release builds use Node 26 and pnpm 12.3.4, matching the validated patched-dependency lockfile. Node is installed before pnpm; dependency installation is frozen.
 5. **Unsigned for now.** macOS builds aren't signed or notarized, so Gatekeeper blocks the first launch
    (right-click → Open, or `xattr -cr coxswain.app`). Windows builds aren't signed either.
 6. **`install.sh` installs on macOS and Linux**, piped from `curl` (README): it resolves the latest release by

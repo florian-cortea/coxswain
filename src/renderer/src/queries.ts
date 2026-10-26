@@ -29,6 +29,29 @@ type Reads = {
 const github = { staleTime: 60_000, refetchOnWindowFocus: true };
 type Extra = { staleTime?: number; refetchOnWindowFocus?: boolean };
 const extra: Partial<Record<Reads, Extra>> = {
+  // These reads have explicit core events. Remounting an observer is not a reason to repeat local work.
+  getAppearance: { staleTime: Infinity },
+  getCodeTheme: { staleTime: Infinity },
+  getGuideSettings: { staleTime: Infinity },
+  getGuideRun: { staleTime: Infinity },
+  getDefaultPrompts: { staleTime: Infinity },
+  getGuideInstructions: { staleTime: Infinity },
+  getPostComments: { staleTime: Infinity },
+  getCommentToAgent: { staleTime: Infinity },
+  getAgentPaneOpen: { staleTime: Infinity },
+  getClosedWorkspaceTabs: { staleTime: Infinity },
+  listProjects: { staleTime: Infinity },
+  listWorkspaces: { staleTime: Infinity },
+  listViews: { staleTime: Infinity },
+  listReviewed: { staleTime: Infinity },
+  listChangedSinceReview: { staleTime: Infinity },
+  listEntries: { staleTime: Infinity },
+  listChangedFiles: { staleTime: Infinity },
+  listWorktreeFiles: { staleTime: Infinity },
+  snapshot: { staleTime: Infinity },
+  uncommitted: { staleTime: Infinity },
+  openWorktree: { staleTime: Infinity },
+  readPullRequest: { staleTime: Infinity },
   readAgentState: { staleTime: Infinity },
   listAgentStatuses: { staleTime: Infinity }, // refetched when a status changes (below)
   listJobs: { staleTime: Infinity }, // the core pushes them (below)
@@ -48,9 +71,11 @@ export function core<K extends Reads>(name: K, ...args: Parameters<Api[K]>) {
   return queryOptions({
     queryKey: key,
     queryFn: async (): Promise<Awaited<ReturnType<Api[K]>>> => {
+      const started = import.meta.env?.DEV ? performance.now() : 0;
       const result = await (
         window.coxswain[name] as (...a: unknown[]) => Promise<Awaited<ReturnType<Api[K]>>>
       )(...args);
+      if (import.meta.env?.DEV) performance.measure(`cx:core:${name}`, { start: started });
       const before = queryClient.getQueryData<{ status?: string }>(key);
       if (
         keepsOk.has(name) &&
@@ -87,24 +112,41 @@ const affects: Record<Changed["what"], Reads[]> = {
     "listWorktreeFiles",
     "readWorktreeFile",
     "listReviewed",
+    "listChangedSinceReview",
     "listEntries",
-    "summaryCoverage",
   ],
   // A turn's session reports its agent's choices of model and effort afresh.
   transcript: ["listAgentSessions", "listAgentPicks"],
   // An agent named a session.
   sessions: ["listAgentSessions"],
-  view: ["listViews"],
-  reviewed: ["listReviewed"],
+  view: ["listViews", "listChangedSinceReview"],
+  guide: ["getGuideInstructions"],
+  "guide-state": ["getGuideRun"],
+  reviewed: ["listReviewed", "listChangedSinceReview"],
   // ADR 0030: its PR or what's pushed moved; the sidebar shows the PR's title and state too.
-  github: ["openWorktree", "readPullRequest", "listPullRequestTitles"],
+  github: [
+    "openWorktree",
+    "readPullRequest",
+    "listPullRequestTitles",
+    "snapshot",
+    "uncommitted",
+    "listChangedFiles",
+    "listWorktreeFiles",
+    "readWorktreeFile",
+    "listEntries",
+    "listReviewed",
+    "listChangedSinceReview",
+    "listCommits",
+  ],
   projects: ["listProjects"],
-  workspaces: ["listWorkspaces"],
+  workspaces: ["listWorkspaces", "getClosedWorkspaceTabs", "getAutoUpdate"],
   // An agent sent its slash commands for one of its sessions.
   commands: ["agentCommands"],
   settings: [
-    "getSummarySettings",
-    "listPrompts",
+    "getAppearance",
+    "getCodeTheme",
+    "getGuideSettings",
+    "getDefaultPrompts",
     "getCommentToAgent",
     "getPostComments",
     "listAgentPicks",
@@ -155,7 +197,7 @@ window.coxswain.onAgentState((id, state) => {
   void queryClient.invalidateQueries({ queryKey: core("listAgentStatuses").queryKey });
 });
 
-// ADR 0029: the core sends the file summary jobs whenever one changes.
+// ADR 0038: the core pushes the job list whenever a background job changes.
 // Coverage is counted again when a job starts or ends, not at every step of one.
 let runningJobs = "";
 window.coxswain.onJobs((jobs) => {
@@ -163,5 +205,4 @@ window.coxswain.onJobs((jobs) => {
   const running = jobs.flatMap((j) => (j.state === "running" ? [j.id] : [])).join();
   if (running === runningJobs) return;
   runningJobs = running;
-  void queryClient.invalidateQueries({ queryKey: ["summaryCoverage"] });
 });
