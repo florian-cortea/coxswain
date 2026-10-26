@@ -21,7 +21,7 @@ SQLite uses `node:sqlite`; native Liquid Glass adds an native macOS addon (ADR 0
    (arm64 and x64), an NSIS installer for Windows x64, an AppImage for Linux x64. The agent SDKs' bundled
    `claude` and `codex` binaries are left out; the user's own are used. Files are named
    `coxswain-<version>-<os>-<arch>.<ext>` (the AppImage says `x86_64` for x64).
-   The `electron-glasskit` package is unpacked from ASAR, including arm64/x64 native binaries and Swift
+   Release builds rebuild the patched `electron-glasskit` bridge for both arm64 and x64 before packaging. The `electron-glasskit` package is unpacked from ASAR, including arm64/x64 native binaries and Swift
    libraries. It stays external to the main bundle and supplies no-op support on other platforms.
    The macOS bundle uses `resources/icon.icns`. On macOS, `pnpm icon` renders the saved
    `resources/coxswain.icon` with Icon Composer 27's `ictool` (macOS, Default, design generation 27).
