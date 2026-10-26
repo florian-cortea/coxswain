@@ -3,6 +3,19 @@
 Where the build stands and what we owe. Newest entry first. Terms are defined in
 [the glossary](context/coxswain.md); decisions are in [the ADRs](adr/).
 
+## 2026-10-26 — Visibility-aware review counts
+
+- Changes tab, category and folder counts share one display rule: reviewed/changed when showing reviewed files, unreviewed only when hiding them. Unknown review data stays unknown, avoiding the loading count flash.
+- Added coverage for shown/hidden, fully reviewed, unequal progress and loading states.
+
+## 2026-10-26 — Folder remaining/total counts
+
+- Changes tree folders show unreviewed/total descendant counts beside their names, using the same category-scoped children as the folder Reviewed checkbox, including filtered and collapsed children. Styling matches category counts.
+
+## 2026-10-26 — Update Guide from any workspace tab
+
+- The top Settings menu enables Update Guide whenever a workspace is open, including Changes, Files and PR overview. Viewing the Guide is no longer a prerequisite.
+
 ## 2026-10-26 — Persist bot identity for immediate filtering
 
 - Added an append-only migration caching GitHub bot identity on mirrored review entries. Sync refreshes actor identity for roots and replies even when comment text has not changed; old rows remain unknown until synced.

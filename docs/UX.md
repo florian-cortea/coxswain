@@ -606,7 +606,7 @@ Changes tree folders have right-aligned Reviewed checkboxes, with a neutral mixe
 
 Changes omits Implementation, Tests or Generated category sections when they contain no files matching the sidebar filters.
 
-The Changes tab count shows unreviewed files. Implementation/Tests/Generated file counts show unreviewed/total files (for example 12/24), even when reviewed files are visible. Category file counts sit directly beside the category name with a 1 px downward optical alignment; fixed-width diff totals and the Reviewed checkbox remain aligned on the right. Added/deleted totals continue describing the visible files.
+Changes, Implementation/Tests/Generated and folder file counts show reviewed/changed when reviewed files are visible, and only the unreviewed count when they are hidden. Category file counts sit directly beside the category name with a 1 px downward optical alignment; fixed-width diff totals and the Reviewed checkbox remain aligned on the right. Added/deleted totals continue describing the visible files.
 
 Submit Review omits the No open comment threads empty-state notice when Approve is selected; approving without comments is a normal review.
 
@@ -625,3 +625,9 @@ Workspace-tab PR icons use green for open PRs, a filled green checkbox when appr
 Merge-conflicting workspace tabs use a filled orange square with an exclamation mark. Approved titles keep the normal text colour; only the status icon is green.
 
 Bot identity is cached with mirrored review comments, so previously synced bots are excluded immediately on workspace open without waiting for live GitHub metadata. Older comments learn identity on their next successful sync. Explicitly showing a bot still includes it.
+
+Update Guide in the top Settings dropdown is enabled whenever a workspace is open, including while viewing Changes, Files or the PR overview. It does not require the Guide to be displayed.
+
+Changes tree folders show visibility-aware review counts beside their names, matching category counts and including filtered or collapsed descendants within the folder’s category. Counts retain the same muted style and 1 px optical alignment.
+
+Changes tab, category and folder counts follow sidebar visibility: when reviewed files are shown, display reviewed/changed (for example 5/12); when hidden, display only unreviewed files (7). Counts use all changed descendants in scope, including collapsed or thread-filtered files.

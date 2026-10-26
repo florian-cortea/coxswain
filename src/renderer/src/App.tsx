@@ -1,4 +1,4 @@
-import { remainingFiles } from "./remaining-files";
+import { fileCountLabel } from "./remaining-files";
 import { createGuideReadingPosition } from "./guide-reading-position";
 import { orderChanges } from "./changes-order";
 import { Virtualizer } from "@pierre/diffs/react";
@@ -1319,7 +1319,7 @@ export function App() {
     const result = await window.coxswain.showSettingsMenu(
       viewSettings,
       guideDescriptionPosition,
-      !!currentWorkspace && !!canvasView,
+      !!currentWorkspace,
       currentWorkspace?.id ?? null,
     );
     match(result)
@@ -1431,9 +1431,10 @@ export function App() {
                   >
                     <PaneBar
                       tab={view}
-                      files={remainingFiles(
+                      files={fileCountLabel(
                         view === "diffs" ? diffPr.changed : pr.changed,
                         view === "diffs" ? reviewedQuery.data : liveReviewedQuery.data,
+                        guideOptions.showReviewedFiles,
                       )}
                       onTab={pickPaneTab}
                       onHide={() => setPaneOpen(false)}

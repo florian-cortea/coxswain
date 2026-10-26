@@ -1,3 +1,4 @@
+import { reviewCountLabel } from "./remaining-files";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useFileTree } from "@pierre/trees/react";
 import { match } from "ts-pattern";
@@ -131,9 +132,13 @@ export function ChangesNavigator(props: NavigatorProps) {
                         "relative top-px shrink-0 text-[11px] font-normal tabular-nums",
                         muted,
                       )}
-                      title="Unreviewed / total files"
+                      title={
+                        props.options.showReviewedFiles
+                          ? "Reviewed / changed files"
+                          : "Unreviewed files"
+                      }
                     >
-                      {allFiles.length - reviewed}/{allFiles.length}
+                      {reviewCountLabel(allFiles.length, reviewed, props.options.showReviewedFiles)}
                     </span>
                     <span className="flex-1" />
                     {groupFiles.length > 0 && (
@@ -269,6 +274,23 @@ function ChangesTree(
                     }
                     directory
                   />
+                  <span
+                    className={cn(
+                      "relative top-px shrink-0 text-[11px] font-normal tabular-nums",
+                      muted,
+                    )}
+                    title={
+                      props.options.showReviewedFiles
+                        ? "Reviewed / changed files"
+                        : "Unreviewed files"
+                    }
+                  >
+                    {reviewCountLabel(
+                      children.length,
+                      reviewedChildren,
+                      props.options.showReviewedFiles,
+                    )}
+                  </span>
                 </Button>
                 <SidebarReviewedCheckbox
                   label={row.path}

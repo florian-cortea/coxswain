@@ -10,7 +10,7 @@ export type HistoryTab = "commits" | "turns";
 // file diffs) and Files (the whole file tree). It drags the window, like the canvas's bar.
 export function PaneBar(props: {
   tab: PaneTab;
-  files: number | undefined; // how many file diffs are on the canvas
+  files: string | undefined; // review progress, formatted for the sidebar visibility setting
   onTab: (tab: PaneTab) => void;
   onHide: () => void;
   onOptions: () => void;
