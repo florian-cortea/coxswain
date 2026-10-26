@@ -3,6 +3,11 @@
 Where the build stands and what we owe. Newest entry first. Terms are defined in
 [the glossary](context/coxswain.md); decisions are in [the ADRs](adr/).
 
+## 2026-10-26 — Windows release patch line endings
+
+- Enforce LF checkout for dependency patches with .gitattributes. Windows checkout had converted them to CRLF, causing pnpm 12 to reject the patch header as an invalid unquoted filename. The v1.8.0 build stopped before publication; v1.8.1 contains this packaging fix.
+- A Git checkout regression simulates core.autocrlf=true and verifies patches stay LF with their original hash.
+
 ## 2026-10-26 — Release prepared versions
 
 - Final release checks caught an older queued manual Guide request replaying after a newer one; per-workspace request ordering now discards superseded replays before preparation. Repeated session lifecycle regressions verify the latest override wins.
