@@ -78,6 +78,7 @@ export async function syncThreads(
         "id",
         "kind",
         "body",
+        "author_is_bot as authorIsBot",
         "parent_id as parentId",
         "github_id as githubId",
         "github_thread_id as githubThreadId",
@@ -123,12 +124,14 @@ export async function syncThreads(
       if (
         root.githubThreadId !== t.id ||
         resolved ||
+        root.authorIsBot !== Number(!!first.authorIsBot) ||
         mine ||
         (root.githubId === first.id && root.body !== first.body)
       ) {
         await db
           .updateTable("entries")
           .set({
+            author_is_bot: Number(!!first.authorIsBot),
             github_thread_id: t.id,
             github_resolved: Number(t.resolved),
             ...(resolved && { resolved_at: t.resolved ? now() : null }),
@@ -143,12 +146,18 @@ export async function syncThreads(
     for (const c of replies) {
       const row = byGitHubId.get(c.id);
       const kind = row?.kind === "comment" ? kindOf(c.author) : row?.kind;
-      if (row && row.body === c.body && row.kind === kind) continue;
+      if (
+        row &&
+        row.body === c.body &&
+        row.kind === kind &&
+        row.authorIsBot === Number(!!c.authorIsBot)
+      )
+        continue;
       changed = true;
       if (row)
         await db
           .updateTable("entries")
-          .set({ body: c.body, kind })
+          .set({ body: c.body, kind, author_is_bot: Number(!!c.authorIsBot) })
           .where("id", "=", row.id)
           .execute();
       else
@@ -170,6 +179,7 @@ export async function syncThreads(
             revision: null,
             created_at: c.createdAt,
             author: c.author,
+            author_is_bot: Number(!!c.authorIsBot),
             github_id: c.id,
             github_url: c.url,
           })
@@ -332,6 +342,7 @@ async function mirrorThread(
       created_at: first.createdAt,
       resolved_at: t.resolved ? now() : null,
       author: first.author,
+      author_is_bot: Number(!!first.authorIsBot),
       github_id: first.id,
       github_thread_id: t.id,
       github_url: first.url,
@@ -341,6 +352,7 @@ async function mirrorThread(
       "id",
       "kind",
       "body",
+      "author_is_bot as authorIsBot",
       "github_id as githubId",
       "github_thread_id as githubThreadId",
       "github_resolved as githubResolved",

@@ -3,6 +3,63 @@
 Where the build stands and what we owe. Newest entry first. Terms are defined in
 [the glossary](context/coxswain.md); decisions are in [the ADRs](adr/).
 
+## 2026-10-26 — Persist bot identity for immediate filtering
+
+- Added an append-only migration caching GitHub bot identity on mirrored review entries. Sync refreshes actor identity for roots and replies even when comment text has not changed; old rows remain unknown until synced.
+- Guide and Changes author filtering use cached identities immediately, including suffixless bot logins, without waiting for live PR details. Explicit user inclusion still wins.
+- Regression coverage checks persisted root/reply identities, metadata-only refresh idempotence and offline filtering of suffixless bots. Typecheck, all 91 tests, lint, formatting and build pass. Migrated a scratch copy (schema 18 → 19, preserving all 261 entries) and verified the running app caches greptile-apps/datadog-official as bots. The installed database remains at schema 18; the dev app currently runs against /tmp/coxswain-bot-cache-check.
+
+## 2026-10-26 — Conflict status glyph and neutral tab titles
+
+- Merge conflicts use a filled orange square with an exclamation mark in native and fallback workspace tabs. Reverted approval title colouring; approval remains a filled green checkbox.
+
+## 2026-10-26 — Workspace PR status icon colours
+
+- Workspace-tab PR icons are green when open, a filled green checkbox when approved, purple when merged and orange for merge conflicts or failing head-commit checks. Conflicts/CI failures override approval for open PRs; closed PRs retain red. Native and fallback tabs share one tested colour policy.
+- The batched core PR-title read also returns approval, mergeability and head check-rollup state, using the existing GitHub refresh path.
+
+## 2026-10-26 — Stable Changes remaining count
+
+- Keep the live review marks subscribed while Guide reads its pinned range, so the Changes count is ready on tab switches. Unknown review state no longer falls back to a full unreviewed count; regression coverage checks loading, partial and fully reviewed counts.
+
+## 2026-10-26 — Softer active-file reveal motion
+
+- Active-file following uses elapsed-time critical damping with gentle acceleration and retained velocity when retargeting. Reading updates remain isolated from React row/canvas rendering; animation frames perform only a fractional scroll write, without layout reads.
+- Regression coverage checks gentle starts, target changes without restarting, settling, manual cancellation, Reduce Motion and equal positions at 60/120 Hz.
+
+## 2026-10-26 — Restore animated active-file following
+
+- Removed continuous canvas-to-sidebar offset mapping, which jumped without the requested reveal animation. Auto-follow again smoothly reveals the active file row (section title fallback when filtered out), only when it is outside the sidebar viewport.
+- Retained rendering isolation: reading-marker changes update highlights imperatively without rerendering the app, canvas or sidebar file/thread rows. Equal markers do not restart scrolling; manual sidebar input cancels it.
+- Regression coverage verifies native smooth animation for off-screen rows, no movement for visible rows and immediate Reduce Motion behavior.
+
+## 2026-10-26 — Continuous Guide-to-sidebar progress
+
+- Replaced boundary-triggered sidebar reveals with a continuous mapping of canvas section progress into the corresponding sidebar section. No second animation trails the main scroll, and adjacent section mappings meet without jumps.
+- Sidebar reading updates no longer rerender its full file/thread list. They update marker attributes only when section/file changes, and apply the progress offset directly. Manual sidebar scrolling is unaffected until the main canvas moves again.
+- Regression coverage checks smooth intra-section progression, continuity at section boundaries and viewport clamping.
+
+## 2026-10-26 — Native Guide follow scrolling
+
+- Replaced the JavaScript animation-frame follower with Chromium’s native smooth scroller. New reading markers queue only the latest destination until scrollend, so an active native animation is never repeatedly restarted.
+- Manual sidebar input freezes native motion and clears the queued destination; Reduce Motion remains immediate. Regression coverage checks native delegation, queued-target replacement, completion, cancellation, visible rows and detached destinations.
+
+## 2026-10-26 — Isolate Guide reading updates
+
+- A local Chromium trace of #5769 showed React tasks of roughly 33–46 ms near scroll events. Guide reading markers previously updated top-level App state, rerendering retained canvas content as the current section/file advanced.
+- Reading position now lives in a per-window transient store subscribed to by the Guide sidebar alone. Equal markers keep the same snapshot and do not notify; the canvas no longer rerenders for reading-marker changes. Added subscriber/snapshot regression coverage.
+- Replayed the same two UI scroll actions in #5769 before/after: three scroll events in each trace. Maximum FunctionCall duration within 150 ms of scroll events fell from 45.64 ms to 12.87 ms; callbacks over 16 ms fell from three to zero. This is a small automated sample, not a guarantee for all trackpad gestures. Typecheck, all 88 tests, lint, formatting and build pass.
+
+## 2026-10-26 — Smooth Guide follow timing
+
+- Guide sidebar easing uses elapsed frame time with retained subpixel position instead of frame-count interpolation and forced one-pixel steps. Animation pace is consistent across refresh rates and its final motion no longer stair-steps.
+- Added a regression test comparing 60/120 Hz positions at the same elapsed time; it failed with the old animation and passes with elapsed-time easing.
+
+## 2026-10-26 — Continuous Guide sidebar following
+
+- Guide sidebar following retargets one animation instead of repeatedly restarting native smooth scroll when reading markers advance quickly, especially in short sections with reviewed cards hidden. Manual sidebar input cancels the animation, as do covering or unmounting Guide; Reduce Motion stays immediate.
+- Regression coverage drives rapid marker updates through one animation, checks the final reading destination and verifies cancellation and reduced-motion behavior.
+
 ## 2026-10-26 — Center the reviewed canvas empty state
 
 - The Changes canvas all-reviewed state matches the sidebar: vertically/horizontally centered muted text above the shared bordered Show Reviewed Files button. It fills the available body rather than occupying a top-left row inside the diff virtualizer.

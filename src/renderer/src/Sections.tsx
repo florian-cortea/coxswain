@@ -1,3 +1,5 @@
+import type { GuideReadingStore } from "./guide-reading-position";
+import { createSidebarFollower } from "./components/sidebar-follow";
 import { SidebarReviewedCheckbox } from "./components/SidebarReviewedCheckbox";
 import { SidebarFileThreads } from "./components/SidebarFileThreads";
 import { visibleSidebarThreads } from "./sidebar-threads";
@@ -16,8 +18,7 @@ import { Prose } from "./components/text";
 // A guide's section order matches its canvas anchors, including ungrouped files.
 export function Sections(props: {
   sections: { title: string | null; files: Opened[] }[] | null;
-  current?: number;
-  currentFile?: string;
+  readingPosition: GuideReadingStore;
   follow: boolean;
   viewId?: number;
   entries: ReviewEntry[];
@@ -35,28 +36,67 @@ export function Sections(props: {
 }) {
   const nav = useRef<HTMLElement>(null);
   const themeStyles = useFileTreeTheme();
+  const lastMarker = useRef<string | undefined>(undefined);
+  const follower = useRef<ReturnType<typeof createSidebarFollower> | null>(null);
+  useEffect(() => {
+    follower.current = createSidebarFollower();
+    return () => follower.current?.stop();
+  }, []);
+  // Reading updates change only marker attributes. File/thread rows and the canvas do
+  // not rerender; a damped animation owns the smooth scroll to the active file (or section fallback).
+  useEffect(() => {
+    const filterKey = JSON.stringify(props.options);
+    const update = () => {
+      const list = nav.current;
+      if (!list) return;
+      const reading = props.readingPosition.getSnapshot();
+      const current = reading?.viewId === props.viewId ? reading : undefined;
+      const section = current
+        ? list.querySelector<HTMLElement>(`[data-guide-section="${current.section}"]`)
+        : null;
+      const key = `${current ? `${current.viewId}:${current.section}:${current.file ?? ""}` : "none"}:${props.follow}:${filterKey}`;
+      if (lastMarker.current === key) return;
+      lastMarker.current = key;
+      for (const old of list.querySelectorAll<HTMLElement>(
+        "[data-sidebar-current], [data-reading-file], [aria-current]",
+      )) {
+        old.removeAttribute("data-sidebar-current");
+        old.removeAttribute("data-reading-file");
+        old.removeAttribute("aria-current");
+      }
+      const title = section?.querySelector<HTMLElement>(".guide-section-title");
+      title?.setAttribute("data-sidebar-current", "true");
+      title?.querySelector("button")?.setAttribute("aria-current", "location");
+      for (const row of section?.querySelectorAll<HTMLElement>("[data-sidebar-file]") ?? []) {
+        if (row.dataset.sidebarFile !== current?.file) continue;
+        row.setAttribute("data-sidebar-current", "true");
+        row.setAttribute("data-reading-file", "true");
+      }
+      if (!current || !section) return;
+      if (!props.follow) {
+        follower.current?.stop();
+        return;
+      }
+      const row =
+        section.querySelector<HTMLElement>('[data-reading-file="true"]') ??
+        section.querySelector<HTMLElement>(".guide-section-title");
+      if (row)
+        follower.current?.reveal(list, row, matchMedia("(prefers-reduced-motion: reduce)").matches);
+    };
+    update();
+    return props.readingPosition.subscribe(update);
+  });
   useEffect(() => {
     const list = nav.current;
-    if (!props.follow) {
-      // Freeze a reveal animation already in flight when the review canvas is covered.
-      list?.scrollTo({ top: list.scrollTop, behavior: "instant" });
-      return;
-    }
-    const row =
-      list?.querySelector<HTMLElement>('[data-reading-file="true"]') ??
-      list?.querySelector<HTMLElement>('[aria-current="location"]');
-    if (!list || !row) return;
-    const viewport = list.getBoundingClientRect();
-    const item = row.getBoundingClientRect();
-    let top = list.scrollTop;
-    if (item.top < viewport.top + 8) top += item.top - viewport.top - 8;
-    else if (item.bottom > viewport.bottom - 8) top += item.bottom - viewport.bottom + 8;
-    if (top !== list.scrollTop)
-      list.scrollTo({
-        top,
-        behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth",
-      });
-  }, [props.current, props.currentFile, props.options, props.follow]);
+    const stop = () => follower.current?.stop();
+    list?.addEventListener("wheel", stop, { passive: true });
+    list?.addEventListener("pointerdown", stop, { passive: true });
+    return () => {
+      list?.removeEventListener("wheel", stop);
+      list?.removeEventListener("pointerdown", stop);
+      stop();
+    };
+  }, []);
   const sections = props.sections ?? [];
   const roots = props.entries.filter(
     (entry) => (entry.path || entry.section != null) && !entry.parentId,
@@ -111,7 +151,6 @@ export function Sections(props: {
               path={path}
               file={file}
               showFolder={ambiguous}
-              current={props.current === index && props.currentFile === path}
               reviewed={opened ? props.isReviewed(opened) : false}
               onReviewed={opened ? (on) => props.onFileReviewedChange(opened, on) : undefined}
               onOpen={() => props.onOpenFile(path)}
@@ -141,18 +180,16 @@ export function Sections(props: {
         const reviewed = section.files.filter(props.isReviewed).length;
         const partial = reviewed > 0 && reviewed < section.files.length;
         return (
-          <div key={index} className="guide-section-node mb-2">
+          <div key={index} data-guide-section={index} className="guide-section-node mb-2">
             <div
               className="guide-nav-item guide-section-title relative flex items-start"
               data-sidebar-row="true"
-              data-sidebar-current={props.current === index ? "true" : undefined}
             >
               <Button
                 key={index}
                 variant="ghost"
                 style={{ justifyContent: "flex-start", alignItems: "baseline" }}
                 className="guide-section-link flex min-w-0 flex-1 items-baseline gap-2 px-2 py-2 text-left"
-                aria-current={props.current === index ? "location" : undefined}
                 onClick={() => props.onPick(index)}
               >
                 <span className={cn("w-4 shrink-0 text-[13px] leading-5 font-normal", muted)}>

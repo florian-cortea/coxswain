@@ -4,7 +4,7 @@ import { botLogin, guideAuthorVisible, type GuideAuthor } from "../../shared/gui
 import { isComment, threadAuthor } from "./format.ts";
 
 export function visibleSidebarThreads<
-  T extends Pick<ReviewEntry, "kind" | "author" | "parentId" | "resolvedAt">,
+  T extends Pick<ReviewEntry, "kind" | "author" | "parentId" | "resolvedAt" | "authorIsBot">,
 >(entries: T[], options: GuideOptions, authors: GuideAuthor[]) {
   const identities = new Map(authors.map((author) => [author.name, author]));
   return entries.filter((entry) => {
@@ -12,7 +12,10 @@ export function visibleSidebarThreads<
     return (
       !entry.parentId &&
       (options.showResolved || !entry.resolvedAt) &&
-      guideAuthorVisible(identities.get(name) ?? { name, isBot: botLogin(name) }, options) &&
+      guideAuthorVisible(
+        { name, isBot: !!entry.authorIsBot || !!identities.get(name)?.isBot || botLogin(name) },
+        options,
+      ) &&
       (isComment(entry) ? options.showComments : options.showAgentThreads)
     );
   });

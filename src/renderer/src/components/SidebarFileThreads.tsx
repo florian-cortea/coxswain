@@ -29,6 +29,7 @@ export function SidebarFileThreads(props: {
       {path ? (
         <div
           className="guide-nav-item guide-file-row flex items-center"
+          data-sidebar-file={path}
           data-sidebar-row="true"
           data-sidebar-current={props.current ? "true" : undefined}
           data-reading-file={props.current ? "true" : undefined}

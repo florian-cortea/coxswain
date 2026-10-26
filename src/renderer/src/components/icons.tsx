@@ -382,7 +382,10 @@ export function PersonIcon() {
 }
 
 // A compact check with rounded ends, shared by review status indicators.
-export function CheckIcon() {
+export function CheckIcon({
+  boxed = false,
+  filled = false,
+}: { boxed?: boolean; filled?: boolean } = {}) {
   return (
     <svg
       aria-hidden="true"
@@ -394,7 +397,35 @@ export function CheckIcon() {
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      <path d="m3.25 8.25 3 3 6.5-6.5" />
+      {boxed && (
+        <rect
+          x="1.5"
+          y="1.5"
+          width="13"
+          height="13"
+          rx="2"
+          fill={filled ? "currentColor" : "none"}
+        />
+      )}
+      <path
+        d="m3.25 8.25 3 3 6.5-6.5"
+        stroke={filled ? "var(--color-neutral-950)" : "currentColor"}
+      />
+    </svg>
+  );
+}
+
+export function ExclamationSquareIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16" className="size-3.5 shrink-0" fill="none">
+      <rect x="1" y="1" width="14" height="14" rx="2.5" fill="currentColor" />
+      <path
+        d="M8 4.25v4.5"
+        stroke="var(--color-neutral-950)"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+      />
+      <circle cx="8" cy="11.5" r="1" fill="var(--color-neutral-950)" />
     </svg>
   );
 }

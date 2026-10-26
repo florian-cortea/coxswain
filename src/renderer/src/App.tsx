@@ -1,3 +1,5 @@
+import { remainingFiles } from "./remaining-files";
+import { createGuideReadingPosition } from "./guide-reading-position";
 import { orderChanges } from "./changes-order";
 import { Virtualizer } from "@pierre/diffs/react";
 import { match, P } from "ts-pattern";
@@ -407,6 +409,11 @@ export function App() {
     enabled: !!currentWorkspace && !!reviewedBase && (!!pr.changed || !!canvasView),
   });
   const reviewed = reviewedQuery.data ?? noPaths;
+  // Keep the live Changes count warm while Guide reads its pinned review range.
+  const liveReviewedQuery = useQuery({
+    ...core("listReviewed", currentWorkspace?.id ?? 0, mergeBase ?? "", undefined),
+    enabled: !!currentWorkspace && !!mergeBase && !!pr.changed,
+  });
   const reviewedFilesQuery = useQuery({
     ...core("listReviewed", currentWorkspace?.id ?? 0, reviewedBase ?? "", range?.head, "file"),
     enabled: !!currentWorkspace && !!canvasView && !!reviewedBase,
@@ -622,9 +629,7 @@ export function App() {
   }, [canvasView, diffDiffs]);
   const canvasFiles = sections?.flatMap((s) => s.files) ?? diffDiffs ?? [];
   // Reading position is transient, separate from the router's click destination.
-  const [readingSection, setReadingSection] = useState<number | undefined>();
-  const [readingFile, setReadingFile] = useState<string | undefined>();
-  const [readingView, setReadingView] = useState<number | undefined>();
+  const [readingPosition] = useState(createGuideReadingPosition);
   const guideReading = useRef(new Map<string, { section: number; file?: string }>());
   const guideTracking = useRef<{ settling: boolean; timer?: ReturnType<typeof setTimeout> }>({
     settling: true,
@@ -635,9 +640,7 @@ export function App() {
     guideTracking.current.settling = true;
     clearTimeout(guideTracking.current.timer);
     const cached = guideReading.current.get(`${currentWorkspace?.id}:${canvasView?.id}`);
-    setReadingSection(cached?.section);
-    setReadingFile(cached?.file);
-    setReadingView(cached ? canvasView?.id : undefined);
+    readingPosition.set(cached && canvasView ? { viewId: canvasView.id, ...cached } : undefined);
     return () => clearTimeout(guideTracking.current.timer);
   }, [currentWorkspace?.id, canvasView?.id]);
   const readGuide = (scroller: HTMLElement) => {
@@ -651,8 +654,7 @@ export function App() {
       return;
     const nodes = canvas.current?.querySelectorAll<HTMLElement>(".guide-section[id]");
     if (!nodes?.length) {
-      setReadingSection(undefined);
-      setReadingFile(undefined);
+      readingPosition.set(undefined);
       return;
     }
     const styles = getComputedStyle(nodes[0]);
@@ -662,7 +664,6 @@ export function App() {
     nodes.forEach((node, index) => {
       if (node.getBoundingClientRect().top <= top) current = index;
     });
-    setReadingSection(current);
     const cards = [...nodes[current].querySelectorAll<HTMLElement>('[id^="diff:"]')];
     let file: HTMLElement | undefined;
     for (const card of cards) {
@@ -670,8 +671,15 @@ export function App() {
       if (!file && bounds.top < viewport.bottom) file = card;
       if (bounds.top <= top) file = card;
     }
-    setReadingFile(file?.id.slice("diff:".length));
-    setReadingView(canvasView?.id);
+    readingPosition.set(
+      canvasView
+        ? {
+            viewId: canvasView.id,
+            section: current,
+            file: file?.id.slice("diff:".length),
+          }
+        : undefined,
+    );
     if (currentWorkspace && canvasView) {
       guideReading.current.set(`${currentWorkspace.id}:${canvasView.id}`, {
         section: current,
@@ -980,12 +988,15 @@ export function App() {
   const sidebarThreads = entries.filter((e) => (e.path || e.section != null) && !e.parentId);
   const botAuthors = useMemo(
     () =>
-      new Set(
-        (pr.details?.threads ?? []).flatMap((thread) =>
+      new Set([
+        ...(allEntries ?? []).flatMap((entry) =>
+          entry.authorIsBot && entry.author ? [entry.author] : [],
+        ),
+        ...(pr.details?.threads ?? []).flatMap((thread) =>
           thread.comments.filter((comment) => comment.authorIsBot).map((comment) => comment.author),
         ),
-      ),
-    [pr.details],
+      ]),
+    [pr.details, allEntries],
   );
   const guideAuthors = [...new Set(sidebarThreads.map(threadAuthor))]
     .sort()
@@ -1420,7 +1431,10 @@ export function App() {
                   >
                     <PaneBar
                       tab={view}
-                      files={diffPr.changed?.filter((file) => !reviewed.includes(file.path)).length}
+                      files={remainingFiles(
+                        view === "diffs" ? diffPr.changed : pr.changed,
+                        view === "diffs" ? reviewedQuery.data : liveReviewedQuery.data,
+                      )}
                       onTab={pickPaneTab}
                       onHide={() => setPaneOpen(false)}
                       onOptions={() =>
@@ -1473,8 +1487,7 @@ export function App() {
                             <Sections
                               follow={!s.pr}
                               sections={sections}
-                              current={readingView === canvasView?.id ? readingSection : undefined}
-                              currentFile={readingView === canvasView?.id ? readingFile : undefined}
+                              readingPosition={readingPosition}
                               viewId={canvasView?.id}
                               entries={entries}
                               turns={turns}

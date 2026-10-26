@@ -34,3 +34,21 @@ test("Guide and Changes use identical author, kind and resolution filtering", ()
   assert.deepEqual(ids({ hiddenAuthors: ["You"] }), [4]);
   assert.deepEqual(ids({ shownAuthors: ["robot"] }), [1, 2, 3, 4]);
 });
+
+test("cached bot identity excludes a suffixless bot before GitHub author metadata loads", () => {
+  const cached = [
+    {
+      id: 9,
+      kind: "comment",
+      author: "greptile-apps",
+      authorIsBot: true,
+      parentId: null,
+      resolvedAt: null,
+    },
+  ] as ReviewEntry[];
+  assert.deepEqual(visibleSidebarThreads(cached, options, []), []);
+  assert.equal(
+    visibleSidebarThreads(cached, { ...options, shownAuthors: ["greptile-apps"] }, []).length,
+    1,
+  );
+});

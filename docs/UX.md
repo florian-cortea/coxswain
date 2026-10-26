@@ -611,3 +611,17 @@ The Changes tab count shows unreviewed files. Implementation/Tests/Generated fil
 Submit Review omits the No open comment threads empty-state notice when Approve is selected; approving without comments is a normal review.
 
 The Changes canvas all-reviewed empty state is centered horizontally and vertically in its available body, matching the sidebar’s text size, muted colour, spacing and Show Reviewed Files button.
+
+Guide sidebar auto-follow smoothly reveals the active file row, falling back to its section title when the file is filtered out. It scrolls only when that row is outside the sidebar viewport. A critically damped reveal accelerates gently and preserves velocity when the active target changes; the offset is never directly mapped to canvas scrolling. Repeated identical reading markers do not restart scrolling, and manual sidebar input cancels the current movement. Reduce Motion remains immediate.
+
+Reading-marker updates change only highlight attributes when the marker changes; reading changes do not rerender the sidebar rows or canvas.
+
+Guide reading markers update a per-window transient store subscribed to by the Guide sidebar alone. Advancing the marker does not rerender the app or retained canvas/file cards.
+
+The Changes remaining count is readied from the live diff while Guide displays its pinned range. Loading review state is unknown, rather than temporarily counted as all files unreviewed, so switching to Changes never flashes the full count.
+
+Workspace-tab PR icons use green for open PRs, a filled green checkbox when approved, purple when merged and orange for merge conflicts or failing CI. On open PRs, conflict/failure takes priority over approval. Closed PRs retain red; branch-only tabs retain their normal neutral icon. Native macOS tabs and web fallback tabs share the same colour rules.
+
+Merge-conflicting workspace tabs use a filled orange square with an exclamation mark. Approved titles keep the normal text colour; only the status icon is green.
+
+Bot identity is cached with mirrored review comments, so previously synced bots are excluded immediately on workspace open without waiting for live GitHub metadata. Older comments learn identity on their next successful sync. Explicitly showing a bot still includes it.

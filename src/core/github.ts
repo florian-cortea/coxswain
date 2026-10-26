@@ -37,6 +37,9 @@ export type PullRequestTitle = {
   title: string;
   state: "open" | "merged" | "closed";
   draft: boolean;
+  approved: boolean;
+  conflicting: boolean;
+  failing: boolean;
 };
 export type PullRequestTitles = { status: "ok"; pulls: PullRequestTitle[] } | GitHubProblem;
 
@@ -143,9 +146,25 @@ export function listPullRequestTitles(
   return withGitHub(async (octokit) => {
     if (!numbers.length) return { status: "ok", pulls: [] };
     const fields = numbers
-      .map((n) => `pr${n}: pullRequest(number: ${Math.trunc(n)}) { number title state isDraft }`)
+      .map(
+        (n) =>
+          `pr${n}: pullRequest(number: ${Math.trunc(n)}) { number title state isDraft reviewDecision mergeable latestReviews(first: 100) { nodes { state } } commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } }`,
+      )
       .join("\n");
-    type Found = { number: number; title: string; state: string; isDraft: boolean } | null;
+    type Found = {
+      number: number;
+      title: string;
+      state: "OPEN" | "MERGED" | "CLOSED";
+      isDraft: boolean;
+      reviewDecision: "APPROVED" | "CHANGES_REQUESTED" | "REVIEW_REQUIRED" | null;
+      latestReviews: {
+        nodes: {
+          state: "APPROVED" | "CHANGES_REQUESTED" | "COMMENTED" | "DISMISSED" | "PENDING";
+        }[];
+      };
+      mergeable: "MERGEABLE" | "CONFLICTING" | "UNKNOWN";
+      commits: { nodes: { commit: { statusCheckRollup: { state: StatusState } | null } }[] };
+    } | null;
     type Data = { repository: Record<string, Found> };
     const query = `query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { ${fields} } }`;
     // A number that isn't a PR fails only its own field: GraphQL answers the others next to the error.
@@ -163,6 +182,15 @@ export function listPullRequestTitles(
                 title: p.title,
                 state: p.state.toLowerCase() as PullRequestTitle["state"],
                 draft: p.isDraft,
+                approved:
+                  p.reviewDecision === "APPROVED" ||
+                  (p.reviewDecision === null &&
+                    p.latestReviews.nodes.some((review) => review.state === "APPROVED") &&
+                    !p.latestReviews.nodes.some((review) => review.state === "CHANGES_REQUESTED")),
+                conflicting: p.mergeable === "CONFLICTING",
+                failing:
+                  p.commits.nodes[0]?.commit.statusCheckRollup != null &&
+                  statusState(p.commits.nodes[0].commit.statusCheckRollup.state) === "failure",
               },
             ]
           : [],

@@ -1,3 +1,4 @@
+import { workspacePrColor, workspacePrSymbol } from "./workspace-pr-color";
 import { useQuery } from "@tanstack/react-query";
 import { match } from "ts-pattern";
 import { Glass, GlassIsland, ui, type GlassNode } from "electron-glasskit/react";
@@ -17,6 +18,8 @@ import type { Project } from "../../core/projects";
 import type { Workspace } from "../../core/workspaces";
 import { Button, ToggleButton } from "./components/button";
 import {
+  CheckIcon,
+  ExclamationSquareIcon,
   ChevronDownIcon,
   GitBranchIcon,
   GlobeIcon,
@@ -339,9 +342,7 @@ function NativeWorkspaceBar(
     const selected = w.id === current?.id;
     const pull = w.prNumber !== null ? props.pulls.get(w.prNumber) : undefined;
     const status = props.statuses[w.id] ?? "idle";
-    const icon = match(pull?.state)
-      .with("merged", () => "arrow.triangle.merge")
-      .otherwise(() => "arrow.triangle.branch");
+    const icon = workspacePrSymbol(pull);
     const statusColor = match(status)
       .with("waiting", () => "#f59e0b")
       .with("working", () => "#3b82f6")
@@ -358,7 +359,10 @@ function NativeWorkspaceBar(
         ...hoverProps,
         disabled: occluded,
         label: ui.hstack({ spacing: 8 }, [
-          ui.symbol(icon, { size: 12 }),
+          ui.symbol(icon, {
+            size: 12,
+            foreground: w.prNumber !== null ? workspacePrColor(pull) : undefined,
+          }),
           ui.text(pull?.title ?? workspaceLabel(w), {
             lineLimit: 1,
             frame: { minWidth: 0, maxWidth: "infinity", alignment: "leading" },
@@ -640,7 +644,17 @@ function WorkspaceTab({
           !selected && muted,
         )}
       >
-        <span className={cn("workspace-tab-icon shrink-0", color)}>{icon}</span>
+        <span
+          className={cn("workspace-tab-icon shrink-0", w.prNumber === null && color)}
+          style={w.prNumber !== null ? { color: workspacePrColor(pull) } : undefined}
+        >
+          {w.prNumber === null
+            ? icon
+            : match(workspacePrSymbol(pull))
+                .with("checkmark.square.fill", () => <CheckIcon boxed filled />)
+                .with("exclamationmark.square.fill", () => <ExclamationSquareIcon />)
+                .otherwise(() => icon)}
+        </span>
         <span className="min-w-0 flex-1 truncate">{title}</span>
         {w.prNumber !== null && pull && (
           <span className={cn("shrink-0 text-[10px]", muted)}>#{w.prNumber}</span>
