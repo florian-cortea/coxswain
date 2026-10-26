@@ -8,6 +8,8 @@ listed at the end.
 
 ## Terms
 
+**Auto-update from remote**: a per-workspace option, on by default, that keeps a clean checkout on its remote branch, including rewritten history. Local edits, untracked files or unpushed commits turn it off for that workspace. It remains off until explicitly re-enabled; local work must be cleared or pushed before it can stay enabled.
+
 **Change group**: one of Changes’ optional top-level file categories: Implementation (source, docs and
 configuration), Tests (test directories and filename conventions), or Generated (generated directories,
 generated filename suffixes, snapshots, build artifacts and lockfiles). Generated takes precedence over

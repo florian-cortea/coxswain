@@ -27,8 +27,12 @@ clones go (`~/coxswain/repos/<owner>/<name>/`) and that git runs with the user's
    `git worktree add --track -b <head branch> <worktree> origin/<head branch>`, so agent commits can
    be pushed to the PR. PRs from forks aren't supported yet. A workspace started on a branch has a worktree on that
    branch instead ([ADR 0028](0028-branch-workspaces-and-snapshots.md)).
-5. **Opening a workspace fetches.** If the PR's (or branch's) head branch moved and the worktree has no local
-   changes, it is fast-forwarded. Otherwise it is left alone and the user is told.
+5. **Opening a workspace fetches.** Auto-update from remote is persisted per workspace in SQLite settings,
+   defaults to on, and follows both forward commits and rewritten history with `git reset --keep`.
+   Before fetching, compare HEAD to the previous remote ref to detect unpushed commits. Local edits,
+   untracked files or unpushed commits disable the option for this workspace; it stays off until explicitly
+   re-enabled. Check again for edits or commits made during the fetch before moving HEAD. Fetching PR metadata
+   continues while auto-update is off, but the checkout remains unchanged. No recovery branches are created.
 6. **The worktree is the source for the Navigator and Viewer.** _Changes_ compares the worktree,
    including uncommitted and untracked files, with the PR's merge base, so an agent's changes show up
    there. _Files_ lists the worktree; the Viewer reads the new side from the worktree and the old side

@@ -44,3 +44,27 @@ test("window buttons recenter after native layout and reload, while fullscreen k
   assert.equal(win.listenerCount("resize"), 0);
   assert.equal(win.webContents.listenerCount("did-finish-load"), 0);
 });
+
+test("closing releases reload listeners without reading destroyed window properties", async () => {
+  const contents = new EventEmitter();
+  let destroyed = false;
+  const win = Object.assign(new EventEmitter(), {
+    webContents: contents,
+    isDestroyed: () => destroyed,
+    isFullScreen: () => false,
+    setWindowButtonPosition: () => {},
+  });
+  Object.defineProperty(win, "webContents", {
+    get() {
+      if (destroyed) throw new TypeError("Object has been destroyed");
+      return contents;
+    },
+  });
+  alignWindowButtons(win as unknown as BrowserWindow);
+  win.emit("resize");
+  destroyed = true;
+  assert.doesNotThrow(() => win.emit("closed"));
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(contents.listenerCount("did-finish-load"), 0);
+  assert.equal(win.listenerCount("resize"), 0);
+});

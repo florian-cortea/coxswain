@@ -1,3 +1,4 @@
+import { orderChanges } from "./changes-order";
 import { Virtualizer } from "@pierre/diffs/react";
 import { match, P } from "ts-pattern";
 import { useQuery } from "@tanstack/react-query";
@@ -65,7 +66,7 @@ import { ProseThreads } from "./ProseThreads";
 import { PullRequestPanel } from "./PullRequest";
 import { ViewProse, ViewSectionHeader } from "./ViewSection";
 import { GuideExplanation } from "./components/GuideExplanation";
-import type { ViewSettings, GuideOptions } from "../../preload";
+import type { ViewSettings, GuideOptions, GuideDescriptionPosition } from "../../preload";
 import { openedPath, type Opened, type Turn, Viewer } from "./Viewer";
 import { WorkspaceTabs } from "./WorkspaceTabs";
 import { FileTabs } from "./FileTabs";
@@ -110,6 +111,9 @@ export function App() {
   const [history, setHistory] = useState<HistoryTab>("commits");
   const [historyOpen, setHistoryOpen] = useState(false);
   const [groupChanges, setGroupChanges] = useState(true);
+  // ponytail: resets on restart like other display options; persist them together in SQLite.
+  const [guideDescriptionPosition, setGuideDescriptionPosition] =
+    useState<GuideDescriptionPosition>("beside");
   // ponytail: like pane widths, this height resets on restart; store pane geometry together in SQLite.
   const [historyHeight, setHistoryHeight] = useState<number | null>(null);
   const [guideOptions, setGuideOptions] = useState<GuideOptions>({
@@ -410,13 +414,8 @@ export function App() {
   const reviewedFiles = reviewedFilesQuery.data ?? noPaths;
   const isReviewed = (opened: Opened) =>
     (opened.kind === "file" ? reviewedFiles : reviewed).includes(openedPath(opened));
-  // A ticked file diff is hidden unless Show Reviewed Files is on: the next one takes its place on screen, rather than
-  // everything below moving up under the scroll. In a view it collapses instead, and its header stays where it was.
-  // Show Reviewed Files and the view through refs, so the callback stays stable.
-  const showReviewed = useRef(viewSettings.showReviewed);
-  showReviewed.current = viewSettings.showReviewed;
-  const inView = useRef(!!canvasView);
-  inView.current = !!canvasView;
+  // Review navigation follows the rendered file order in Changes and Guide.
+  const [reviewReveal, setReviewReveal] = useState<string | null>(null);
   const [fileDisclosure, setFileDisclosure] = useState<Record<string, boolean>>({});
   const disclosureKey = (path: string, kind?: "file") =>
     `${currentWorkspace?.id}:${viewId ?? reviewedBase}:${range?.head ?? "live"}:${kind ?? "diff"}:${path}`;
@@ -428,19 +427,21 @@ export function App() {
       const scroller = canvas.current && canvasScroller(canvas.current);
       const diffs = [...(scroller?.querySelectorAll<HTMLElement>('[id^="diff:"]') ?? [])];
       const i = diffs.findIndex((el) => el.id === `diff:${path}`);
-      const next = diffs[i + 1];
+      const next = diffs.slice(i + 1).find((el) => el.dataset.reviewed !== "true");
       setFileCollapsed(path, on, kind);
       mark(currentWorkspace.id, reviewedBase, path, on, range?.head, kind);
-      const anchor = inView.current ? diffs[i] : next;
-      if (!on || showReviewed.current || i < 0 || !anchor || !scroller) return;
-      const top = scroller.getBoundingClientRect().top;
-      const at = Math.max(diffs[i].getBoundingClientRect().top, top);
+      if (!on || i < 0 || !next || !scroller) return;
+      const anchor = next;
       reviewScroll.current?.();
-      reviewScroll.current = restoreScroll(canvas.current!, {
-        top: 0,
-        anchor: anchor.id,
-        offset: top - at,
+      const frame = requestAnimationFrame(() => {
+        if (!canvas.current) return;
+        reviewScroll.current = restoreScroll(canvas.current, {
+          top: 0,
+          anchor: anchor.id,
+          offset: -(parseFloat(getComputedStyle(scroller).scrollPaddingTop) || 0),
+        });
       });
+      reviewScroll.current = () => cancelAnimationFrame(frame);
     },
     [currentWorkspace?.id, viewId, reviewedBase, range?.head],
   );
@@ -567,20 +568,24 @@ export function App() {
     [rangeList],
   );
   const diffPr = range ? { ...pr, changed: rangeChanged } : pr;
-  const diffDiffs = useMemo(
-    () => (range ? rangeChanged?.map((file) => ({ kind: "diff" as const, file })) : diffs),
-    [!!range, rangeChanged, diffs],
-  );
-  // Reviewed file diffs are hidden unless Show Reviewed Files is on, as in the Navigator. In a view they collapse to
-  // their header instead, so the prose leading into them still has them under it.
+  const diffDiffs = useMemo(() => {
+    const files = range ? rangeChanged : pr.changed;
+    if (!files) return range ? undefined : diffs;
+    const ordered = canvasView ? files : orderChanges(files, viewSettings.layout, groupChanges);
+    return ordered.map((file) => ({ kind: "diff" as const, file }));
+  }, [!!range, rangeChanged, diffs, pr.changed, !!canvasView, viewSettings.layout, groupChanges]);
+  // Explicit sidebar navigation temporarily reveals only the reviewed card requested.
   const isShown = (d: Opened) =>
-    viewSettings.showReviewed || s.at === openedPath(d) || !isReviewed(d);
+    viewSettings.showReviewed ||
+    (reviewReveal === disclosureKey(openedPath(d), d.kind === "file" ? "file" : undefined) &&
+      fileDisclosure[reviewReveal] !== true) ||
+    !isReviewed(d);
   const isCollapsed = (d: Opened) =>
     fileDisclosure[disclosureKey(openedPath(d), d.kind === "file" ? "file" : undefined)] ??
     (s.at !== openedPath(d) && isReviewed(d));
   const shownDiffs = useMemo(
     () => diffDiffs?.filter(isShown),
-    [diffDiffs, reviewed, viewSettings.showReviewed, s.at],
+    [diffDiffs, reviewed, viewSettings.showReviewed, reviewReveal, fileDisclosure],
   );
   // With a view, its sections in order: prose and the file diffs it embeds; for a guide, then the files in none.
   const sections = useMemo(() => {
@@ -802,6 +807,12 @@ export function App() {
   );
   // An entry of its own, though the canvas still shows the file diffs.
   const openReviewFile = async (path: string, pane: "sections" | "diffs") => {
+    const file = canvasFiles.find((file) => openedPath(file) === path);
+    setReviewReveal(
+      file && isReviewed(file)
+        ? disclosureKey(path, file.kind === "file" ? "file" : undefined)
+        : null,
+    );
     setFileCollapsed(path, false);
     // The first card shares its section's destination, including on narrow layouts
     // where the explanation sits above the cards. Keep at to reveal reviewed files.
@@ -1190,7 +1201,10 @@ export function App() {
     {
       id: "toggle-reviewed",
       title: viewSettings.showReviewed ? "Hide Reviewed Files" : "Show Reviewed Files",
-      run: () => setViewSettings((v) => ({ ...v, showReviewed: !v.showReviewed })),
+      run: () => {
+        setReviewReveal(null);
+        setViewSettings((v) => ({ ...v, showReviewed: !v.showReviewed }));
+      },
     },
     ...workspaces.map((w) => ({
       id: `workspace:${w.id}`,
@@ -1291,10 +1305,25 @@ export function App() {
     );
 
   const openSettings = async () => {
-    const result = await window.coxswain.showSettingsMenu(viewSettings);
+    const result = await window.coxswain.showSettingsMenu(
+      viewSettings,
+      guideDescriptionPosition,
+      !!currentWorkspace && !!canvasView,
+      currentWorkspace?.id ?? null,
+    );
     match(result)
       .with({ kind: "app" }, () => setScreen("settings"))
-      .with({ kind: "display" }, ({ settings }) => setViewSettings(settings))
+      .with({ kind: "display" }, ({ settings }) => {
+        if (!settings.showReviewed) setReviewReveal(null);
+        setViewSettings(settings);
+      })
+      .with({ kind: "description-position" }, ({ position }) =>
+        setGuideDescriptionPosition(position),
+      )
+      .with({ kind: "auto-update" }, () => {})
+      .with({ kind: "update-guide" }, () => {
+        if (currentWorkspace) setUpdatingGuide(currentWorkspace.id);
+      })
       .with({ kind: "dismissed" }, () => {})
       .exhaustive();
   };
@@ -1391,7 +1420,7 @@ export function App() {
                   >
                     <PaneBar
                       tab={view}
-                      files={diffPr.changed?.length}
+                      files={diffPr.changed?.filter((file) => !reviewed.includes(file.path)).length}
                       onTab={pickPaneTab}
                       onHide={() => setPaneOpen(false)}
                       onOptions={() =>
@@ -1401,8 +1430,7 @@ export function App() {
                               guideOptions,
                               guideAuthors,
                             );
-                            if (picked === "update") setUpdatingGuide(currentWorkspace.id);
-                            else if (picked !== null) setGuideOptions(picked);
+                            if (picked !== null) setGuideOptions(picked);
                           })
                           .with("diffs", async () => {
                             const picked = await window.coxswain.showChangesMenu(
@@ -1415,10 +1443,6 @@ export function App() {
                               .with({ kind: "grouping" }, ({ enabled }) => setGroupChanges(enabled))
                               .with({ kind: "filters" }, ({ options }) => {
                                 setGuideOptions(options);
-                                setViewSettings((settings) => ({
-                                  ...settings,
-                                  showReviewed: options.showReviewedFiles,
-                                }));
                               })
                               .with({ kind: "layout" }, ({ layout }) =>
                                 setViewSettings((settings) => ({ ...settings, layout })),
@@ -1490,7 +1514,6 @@ export function App() {
                           reviewed={reviewed}
                           showReviewed={viewSettings.showReviewed}
                           onShowReviewed={(showReviewed) => {
-                            setViewSettings((settings) => ({ ...settings, showReviewed }));
                             setGuideOptions((options) => ({
                               ...options,
                               showReviewedFiles: showReviewed,
@@ -1657,157 +1680,169 @@ export function App() {
                                 onUpdate={() => setUpdatingGuide(currentWorkspace.id)}
                               />
                             )}
-                          {/* Pierre draws visible review lines; RetainedCanvas keeps each pane's geometry on tab switches. */}
-                          {view !== "files" && diffDiffs && shownDiffs && (
-                            <Virtualizer
-                              key={`${currentWorkspace.id}:${viewId ?? "diff"}:${range?.base ?? pr.commits?.mergeBase}:${range?.head ?? "live"}`}
+                          {!canvasView && view !== "files" && shownDiffs?.length === 0 && (
+                            <div
                               className={cn(
-                                "min-h-0 flex-1 overflow-auto [scroll-padding-top:var(--review-content-start)] [scroll-padding-bottom:var(--review-content-start)]",
+                                "flex flex-1 flex-col items-center justify-center gap-3 p-4 text-center text-xs",
+                                muted,
                               )}
-                              // Keep spacing off the scrollport: its padding also offsets sticky file headers.
-                              contentClassName="pt-[var(--review-content-start)] pb-[var(--review-content-end)]"
                             >
-                              {canvasView &&
-                              !canvasView.sections.length &&
-                              (!canvasView.guide || !diffDiffs.length) ? (
-                                <div className={cn("p-4 text-xs", muted)}>
-                                  Nothing in this view yet.
-                                </div>
-                              ) : (
-                                !canvasView &&
-                                canvasFiles.every((file) => !isShown(file)) && (
-                                  <div className={cn("p-4 text-xs", muted)}>
-                                    {canvasFiles.length ? (
-                                      <>
-                                        All {canvasFiles.length} files reviewed.{" "}
-                                        <Button
-                                          variant="link"
-                                          onClick={() =>
-                                            setViewSettings((s) => ({ ...s, showReviewed: true }))
-                                          }
-                                        >
-                                          Show them
-                                        </Button>
-                                      </>
-                                    ) : (
-                                      "No changes"
-                                    )}
-                                  </div>
-                                )
-                              )}
-                              {(
-                                sections ?? [
-                                  {
-                                    title: undefined,
-                                    muted: false,
-                                    files: diffDiffs,
-                                    parts: shownDiffs.map((d) => ({
-                                      kind: "code",
-                                      d,
-                                      muted: false,
-                                    })),
-                                  },
-                                ]
-                              ).map((x, i) => (
-                                <section
-                                  key={i}
-                                  id={`view-section-${i}`}
-                                  className={cn(
-                                    x.muted && "opacity-60",
-                                    // A guide's explanation and cards share a row, with room between sections.
-                                    x.title !== undefined && "guide-section mb-12",
-                                    divider,
-                                  )}
-                                >
-                                  <ProseThreads
-                                    revealThread={s.thread}
-                                    revealVersion={threadPicks}
-                                    onThreadResolved={(id) => {
-                                      if (shown.current.thread === id)
-                                        void show({ thread: undefined });
-                                    }}
-                                    workspaceId={currentWorkspace.id}
-                                    canPost={currentWorkspace.prNumber !== null}
-                                    viewId={canvasView?.id ?? 0}
-                                    section={i}
-                                    entries={entries}
-                                    turns={turns}
-                                    onAsk={ask}
-                                    onAnswerPermission={answerPermission}
+                              {canvasFiles.length ? (
+                                <>
+                                  <span>All {canvasFiles.length} files reviewed</span>
+                                  <Button
+                                    className={muted}
+                                    onClick={() =>
+                                      setViewSettings((settings) => ({
+                                        ...settings,
+                                        showReviewed: true,
+                                      }))
+                                    }
                                   >
-                                    <div
-                                      className={cn(
-                                        x.title !== undefined && "guide-section-layout",
-                                        x.title !== undefined &&
-                                          x.files.length > 0 &&
-                                          "guide-section-with-code",
-                                        x.title !== undefined &&
-                                          x.files.length === 0 &&
-                                          "guide-section-prose-only",
-                                      )}
+                                    Show Reviewed Files
+                                  </Button>
+                                </>
+                              ) : (
+                                "No changes"
+                              )}
+                            </div>
+                          )}
+                          {/* Pierre draws visible review lines; RetainedCanvas keeps each pane's geometry on tab switches. */}
+                          {view !== "files" &&
+                            diffDiffs &&
+                            shownDiffs &&
+                            (canvasView || shownDiffs.length > 0) && (
+                              <Virtualizer
+                                key={`${currentWorkspace.id}:${viewId ?? "diff"}:${range?.base ?? pr.commits?.mergeBase}:${range?.head ?? "live"}`}
+                                className={cn(
+                                  "min-h-0 flex-1 overflow-auto [scroll-padding-top:var(--review-content-start)] [scroll-padding-bottom:var(--review-content-start)]",
+                                )}
+                                // Keep spacing off the scrollport: its padding also offsets sticky file headers.
+                                contentClassName="pt-[var(--review-content-start)] pb-[var(--review-content-end)]"
+                              >
+                                {canvasView &&
+                                  !canvasView.sections.length &&
+                                  (!canvasView.guide || !diffDiffs.length) && (
+                                    <div className={cn("p-4 text-xs", muted)}>
+                                      Nothing in this view yet.
+                                    </div>
+                                  )}
+                                {(
+                                  sections ?? [
+                                    {
+                                      title: undefined,
+                                      muted: false,
+                                      files: diffDiffs,
+                                      parts: shownDiffs.map((d) => ({
+                                        kind: "code",
+                                        d,
+                                        muted: false,
+                                      })),
+                                    },
+                                  ]
+                                ).map((x, i) => (
+                                  <section
+                                    key={i}
+                                    id={`view-section-${i}`}
+                                    className={cn(
+                                      x.muted && "opacity-60",
+                                      // A guide's explanation and cards share a row, with room between sections.
+                                      x.title !== undefined && "guide-section mb-12",
+                                      divider,
+                                    )}
+                                  >
+                                    <ProseThreads
+                                      revealThread={s.thread}
+                                      revealVersion={threadPicks}
+                                      onThreadResolved={(id) => {
+                                        if (shown.current.thread === id)
+                                          void show({ thread: undefined });
+                                      }}
+                                      workspaceId={currentWorkspace.id}
+                                      canPost={currentWorkspace.prNumber !== null}
+                                      viewId={canvasView?.id ?? 0}
+                                      section={i}
+                                      entries={entries}
+                                      turns={turns}
+                                      onAsk={ask}
+                                      onAnswerPermission={answerPermission}
                                     >
-                                      {x.title !== undefined && (
-                                        <GuideExplanation>
-                                          <ViewSectionHeader
-                                            title={x.title}
-                                            position={
-                                              x.title !== null && canvasView
-                                                ? {
-                                                    index: i + 1,
-                                                    total: canvasView.sections.length,
-                                                  }
-                                                : undefined
-                                            }
-                                            files={x.files.length}
-                                            reviewed={x.files.filter(isReviewed).length}
-                                            writing={!!canvasView?.writing}
-                                            onReviewedChange={(on) => markSection(x.files, on)}
-                                          />
+                                      <div
+                                        className={cn(
+                                          x.title !== undefined && "guide-section-layout",
+                                          x.title !== undefined &&
+                                            x.files.length > 0 &&
+                                            guideDescriptionPosition === "beside" &&
+                                            "guide-section-with-code",
+                                          x.title !== undefined &&
+                                            x.files.length === 0 &&
+                                            "guide-section-prose-only",
+                                        )}
+                                      >
+                                        {x.title !== undefined && (
+                                          <GuideExplanation>
+                                            <ViewSectionHeader
+                                              title={x.title}
+                                              position={
+                                                x.title !== null && canvasView
+                                                  ? {
+                                                      index: i + 1,
+                                                      total: canvasView.sections.length,
+                                                    }
+                                                  : undefined
+                                              }
+                                              files={x.files.length}
+                                              reviewed={x.files.filter(isReviewed).length}
+                                              writing={!!canvasView?.writing}
+                                              onReviewedChange={(on) => markSection(x.files, on)}
+                                            />
+                                            {(x.parts as SectionPart[]).map(
+                                              (p, j) =>
+                                                p.kind === "prose" && (
+                                                  <ViewProse key={j} part={j}>
+                                                    {p.text}
+                                                  </ViewProse>
+                                                ),
+                                            )}
+                                          </GuideExplanation>
+                                        )}
+                                        <div className="min-w-0">
                                           {(x.parts as SectionPart[]).map(
-                                            (p, j) =>
-                                              p.kind === "prose" && (
-                                                <ViewProse key={j} part={j}>
-                                                  {p.text}
-                                                </ViewProse>
+                                            (p) =>
+                                              p.kind === "code" &&
+                                              isShown(p.d) && (
+                                                <div
+                                                  key={openedPath(p.d)}
+                                                  id={`diff:${openedPath(p.d)}`}
+                                                  data-reviewed={isReviewed(p.d)}
+                                                  className={cn(
+                                                    p.muted && !x.muted && "opacity-60",
+                                                    reviewCard,
+                                                    x.title === undefined && reviewGutter,
+                                                    "mb-8 overflow-clip",
+                                                  )}
+                                                >
+                                                  <Viewer
+                                                    stacked
+                                                    opened={p.d}
+                                                    reviewed={isReviewed(p.d)}
+                                                    collapsed={isCollapsed(p.d)}
+                                                    {...viewerProps(
+                                                      currentWorkspace,
+                                                      range?.base ?? pr.commits!.mergeBase,
+                                                      range?.head,
+                                                    )}
+                                                  />
+                                                </div>
                                               ),
                                           )}
-                                        </GuideExplanation>
-                                      )}
-                                      <div className="min-w-0">
-                                        {(x.parts as SectionPart[]).map(
-                                          (p) =>
-                                            p.kind === "code" && (
-                                              <div
-                                                key={openedPath(p.d)}
-                                                id={`diff:${openedPath(p.d)}`}
-                                                className={cn(
-                                                  p.muted && !x.muted && "opacity-60",
-                                                  reviewCard,
-                                                  x.title === undefined && reviewGutter,
-                                                  "mb-8 overflow-clip",
-                                                )}
-                                              >
-                                                <Viewer
-                                                  stacked
-                                                  opened={p.d}
-                                                  reviewed={isReviewed(p.d)}
-                                                  collapsed={isCollapsed(p.d)}
-                                                  {...viewerProps(
-                                                    currentWorkspace,
-                                                    range?.base ?? pr.commits!.mergeBase,
-                                                    range?.head,
-                                                  )}
-                                                />
-                                              </div>
-                                            ),
-                                        )}
+                                        </div>
                                       </div>
-                                    </div>
-                                  </ProseThreads>
-                                </section>
-                              ))}
-                            </Virtualizer>
-                          )}
+                                    </ProseThreads>
+                                  </section>
+                                ))}
+                              </Virtualizer>
+                            )}
                         </>
                       )}
                     </div>

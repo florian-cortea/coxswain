@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useFileTree } from "@pierre/trees/react";
 import { match } from "ts-pattern";
 import type { NavigatorProps } from "./Navigator";
+import { changesRowPaths } from "./changes-order";
 import { visibleSidebarThreads } from "./sidebar-threads";
 import { SidebarFileThreads } from "./components/SidebarFileThreads";
 import { SidebarFileLabel } from "./components/SidebarFileLabel";
@@ -100,6 +101,7 @@ export function ChangesNavigator(props: NavigatorProps) {
       {props.groupChanges
         ? changeGroups.map(({ id, label }) => {
             const groupFiles = files.filter((file) => changeGroup(file.path) === id);
+            if (!groupFiles.length) return null;
             const allFiles = (props.pr.changed ?? []).filter(
               (file) => changeGroup(file.path) === id,
             );
@@ -123,13 +125,19 @@ export function ChangesNavigator(props: NavigatorProps) {
                     }}
                   >
                     <SidebarDisclosure expanded={open} />
-                    <span className="font-semibold">{label}</span>
-                    <span className={cn("text-[11px] font-normal", muted)}>
-                      {groupFiles.length}
+                    <span className="min-w-0 truncate font-semibold">{label}</span>
+                    <span
+                      className={cn(
+                        "relative top-px shrink-0 text-[11px] font-normal tabular-nums",
+                        muted,
+                      )}
+                      title="Unreviewed / total files"
+                    >
+                      {allFiles.length - reviewed}/{allFiles.length}
                     </span>
                     <span className="flex-1" />
                     {groupFiles.length > 0 && (
-                      <span className="flex shrink-0 gap-1.5 font-mono text-[11px] font-normal opacity-80">
+                      <span className="flex w-24 shrink-0 justify-end gap-1.5 font-mono text-[11px] font-normal opacity-80">
                         <span className="text-green-600 dark:text-green-400">+{additions}</span>
                         <span className="text-red-600 dark:text-red-400">−{deletions}</span>
                       </span>
@@ -168,23 +176,14 @@ function ChangesTree(
   },
 ) {
   const nav = useRef<HTMLDivElement>(null);
-  const rowPaths = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const file of props.files) {
-      const name = file.path.slice(file.path.lastIndexOf("/") + 1);
-      counts.set(name, (counts.get(name) ?? 0) + 1);
-    }
-    return new Map(
-      props.files.map((file) => {
-        const name = file.path.slice(file.path.lastIndexOf("/") + 1);
-        const row = match(props.layout)
-          .with("tree", () => file.path)
-          .with("list", () => ((counts.get(name) ?? 0) > 1 ? file.path.replaceAll("/", "∕") : name))
-          .exhaustive();
-        return [row, file.path];
-      }),
-    );
-  }, [props.files, props.layout]);
+  const rowPaths = useMemo(
+    () =>
+      changesRowPaths(
+        props.files.map((file) => file.path),
+        props.layout,
+      ),
+    [props.files, props.layout],
+  );
   const rowOf = new Map([...rowPaths].map(([row, path]) => [path, row]));
   const { model } = useFileTree({
     paths: [...rowPaths.keys()],
@@ -233,6 +232,17 @@ function ChangesTree(
       const row = rows[index];
       let next = index + 1;
       while (next < end && rows[next].depth > row.depth) next++;
+      const children =
+        row.kind === "directory"
+          ? (props.pr.changed ?? []).filter(
+              (file) =>
+                file.path.startsWith(`${row.path.replace(/\/$/, "")}/`) &&
+                (!props.groupChanges ||
+                  !props.files[0] ||
+                  changeGroup(file.path) === changeGroup(props.files[0].path)),
+            )
+          : [];
+      const reviewedChildren = children.filter((file) => props.reviewed.includes(file.path)).length;
       result.push(
         <div
           key={row.path}
@@ -242,10 +252,10 @@ function ChangesTree(
         >
           {row.kind === "directory" ? (
             <>
-              <div className="guide-nav-item" data-sidebar-row="true">
+              <div className="guide-nav-item flex items-center" data-sidebar-row="true">
                 <Button
                   variant="ghost"
-                  className="guide-section-link flex w-full min-w-0 items-center gap-2 px-2 py-1.5 text-left"
+                  className="guide-section-link flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left"
                   style={{ justifyContent: "flex-start" }}
                   aria-expanded={row.isExpanded}
                   title={row.path}
@@ -260,6 +270,17 @@ function ChangesTree(
                     directory
                   />
                 </Button>
+                <SidebarReviewedCheckbox
+                  label={row.path}
+                  checked={children.length > 0 && reviewedChildren === children.length}
+                  partial={reviewedChildren > 0 && reviewedChildren < children.length}
+                  disabled={!children.length}
+                  onChange={(on) => {
+                    for (const file of children)
+                      if (props.reviewed.includes(file.path) !== on)
+                        props.onReviewedChange(file.path, on);
+                  }}
+                />
               </div>
               {next > index + 1 && (
                 <div className="changes-tree-children">{renderRows(index + 1, next, true)}</div>

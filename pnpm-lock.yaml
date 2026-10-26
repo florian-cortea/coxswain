@@ -5,12 +5,8 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  '@agentclientprotocol/claude-agent-acp@0.81.2':
-    hash: 7fada8b315c7e1e52e22722c9f72125848eb294de53317ff94586bde73579d07
-    path: patches/@agentclientprotocol__claude-agent-acp@0.81.2.patch
-  electron-glasskit@0.1.0:
-    hash: 53893f246e83014e6b9f05f646121b819e37466b8cdd78a5dd95641b0d1a2f81
-    path: patches/electron-glasskit@0.1.0.patch
+  '@agentclientprotocol/claude-agent-acp@0.81.2': 7fada8b315c7e1e52e22722c9f72125848eb294de53317ff94586bde73579d07
+  electron-glasskit@0.1.0: 464d52a6a94105b398624118f7c8a8dd8ae31ac1b86189f7695202493f1ea5f5
 
 importers:
 
@@ -42,7 +38,7 @@ importers:
         version: 1.170.40(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       electron-glasskit:
         specifier: 0.1.0
-        version: 0.1.0(patch_hash=53893f246e83014e6b9f05f646121b819e37466b8cdd78a5dd95641b0d1a2f81)(electron@44.4.5)(react@19.3.0)
+        version: 0.1.0(patch_hash=464d52a6a94105b398624118f7c8a8dd8ae31ac1b86189f7695202493f1ea5f5)(electron@44.4.5)(react@19.3.0)
       kysely:
         specifier: 0.29.6
         version: 0.29.6
@@ -5864,7 +5860,7 @@ snapshots:
       - electron-builder-squirrel-windows
       - supports-color
 
-  electron-glasskit@0.1.0(patch_hash=53893f246e83014e6b9f05f646121b819e37466b8cdd78a5dd95641b0d1a2f81)(electron@44.4.5)(react@19.3.0):
+  electron-glasskit@0.1.0(patch_hash=464d52a6a94105b398624118f7c8a8dd8ae31ac1b86189f7695202493f1ea5f5)(electron@44.4.5)(react@19.3.0):
     optionalDependencies:
       electron: 44.4.5
       react: 19.3.0

@@ -137,7 +137,7 @@ export function SubmitReviewDialog(props: {
         <>
           <DialogBody className="flex flex-col gap-3 text-[13px]">
             {draft.isError && <ErrorText className="px-5 py-2">{String(draft.error)}</ErrorText>}
-            {!threads.length && !draft.isError && (
+            {event !== "APPROVE" && !threads.length && !draft.isError && (
               <div className={cn("ui-dialog-empty rounded-xl px-4 py-5 leading-5", muted)}>
                 No open comment threads. Agent threads become one with Summarize as Comment.
               </div>

@@ -20,7 +20,7 @@ index 6f7ec866b689f5a0c3f3e3430b34a5dba78bdeee..1c8f40a633b2d0ade8a8e96d09f5779e
          }
      }
  }
-@@ -21,6 +21,7 @@ struct ButtonNodeView: View {
+@@ -21,6 +30,7 @@ struct ButtonNodeView: View {
      let button: ButtonNode
      let layout: NodeLayout
      let context: RenderContext
@@ -28,7 +28,7 @@ index 6f7ec866b689f5a0c3f3e3430b34a5dba78bdeee..1c8f40a633b2d0ade8a8e96d09f5779e
  
      var body: some View {
          Button {
-@@ -31,6 +32,24 @@ struct ButtonNodeView: View {
+@@ -31,6 +41,24 @@ struct ButtonNodeView: View {
                  .contentShape(Rectangle())
          }
          .modifier(ButtonLook(style: button.style ?? .plain))

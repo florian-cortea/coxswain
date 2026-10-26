@@ -3,6 +3,69 @@
 Where the build stands and what we owe. Newest entry first. Terms are defined in
 [the glossary](context/coxswain.md); decisions are in [the ADRs](adr/).
 
+## 2026-10-26 — Center the reviewed canvas empty state
+
+- The Changes canvas all-reviewed state matches the sidebar: vertically/horizontally centered muted text above the shared bordered Show Reviewed Files button. It fills the available body rather than occupying a top-left row inside the diff virtualizer.
+
+## 2026-10-26 — Quiet approvals without comments
+
+- Submit Review hides the No open comment threads notice when Approve is selected, so approvals without comments do not show the empty-state warning.
+
+## 2026-10-26 — Count remaining review files
+
+- Changes reports unreviewed files; category file counts show unreviewed/total files. Category counts sit directly beside the category name with a 1 px downward optical alignment, with fixed-width diff totals and the Reviewed checkbox aligned on the right.
+
+## 2026-10-26 — Omit empty change categories
+
+- Changes hides Implementation, Tests and Generated sections when they have no visible files, including categories emptied by sidebar filters.
+
+## 2026-10-26 — Folder review controls
+
+- Changes tree folder rows have the shared Reviewed checkbox with unchecked, partial and checked states. Toggling marks/unmarks all changed descendants in the folder’s category, including filtered and collapsed children, without toggling expansion.
+
+## 2026-10-26 — Match Changes canvas and sidebar ordering
+
+- Changes canvas uses Pierre’s file traversal, shared with the sidebar’s row identities, instead of Git’s path order. It follows Tree/List layout and Implementation/Tests/Generated grouping. Guide sections keep their authored order.
+- Regression coverage compares every canvas path to the sidebar model in all four layout/grouping combinations, including natural filenames and duplicate basenames.
+
+## 2026-10-26 — Reliable hide-reviewed canvas control
+
+- Settings menu dismissal waits one event turn so its close callback cannot swallow a selected checkbox action. Regression coverage checks selection-before-dismissal ordering and dismissal without selection.
+- Hide Reviewed Files clears the old selection exception. Explicit sidebar navigation temporarily reveals only the requested reviewed card without changing the hide setting; selecting another file or reviewing it again removes that exception.
+- Typecheck, all 84 tests, lint, formatting and build pass. The updated Settings item is present in the running app; end-to-end interaction verification was interrupted by concurrent user interaction.
+
+## 2026-10-26 — Per-workspace remote updates
+
+- The top Settings dropdown has Auto-update from Remote, on by default and persisted independently for each workspace in SQLite settings. Clean checkouts follow force-pushes and remote rewinds without creating recovery branches.
+- Local edits, untracked files and unpushed commits disable auto-update before fetching. The core watcher detects local work between remote checks, and the updater checks again for work made during a fetch. Cleaning up does not re-enable it automatically.
+- Regression coverage uses real Git histories for force-pushes, remote rewinds, local commits, untracked edits, per-workspace isolation and edits/commits made during fetching. Typecheck, all 82 tests, lint, formatting and build pass; verified the option in the running app’s top Settings dropdown.
+
+## 2026-10-26 — Restore native workspace close buttons
+
+- Moved required dependency patches and build permissions from the retired package.json pnpm field into pnpm-workspace.yaml. Dependency restores with pnpm 12 now preserve the native hover close controls and the Claude adapter patch.
+- Corrected cumulative new-file offsets in the native patch so the current package manager accepts it. Rebuilt the native bridge with hover actions enabled.
+
+## 2026-10-26 — Scope menus to their surfaces
+
+- Sidebar menus now contain only sidebar filters and file-list layout/grouping. Section Descriptions and Update Guide moved to the top Settings dropdown alongside a separate Hide Reviewed Files option. Sidebar reviewed-file filtering no longer changes the canvas.
+- Typecheck, all 81 tests, lint, formatting and build pass. Verified the relocated controls in the development app’s Settings dropdown. Closed older development launchers and app processes, leaving the latest instance.
+
+## 2026-10-26 — Guide description placement
+
+- The top Settings dropdown switches section descriptions between Beside Files (default, responsive columns) and Above Files (stacked at every width). Above Files keeps descriptions in normal scrolling flow and gives file cards the canvas width. Like other display options, the choice resets on restart; persist display preferences together in SQLite.
+- Verified Above Files in the running development app. Typecheck, all 81 tests, lint, formatting and build pass.
+
+## 2026-10-26 — Safe window-close cleanup
+
+- Window-button alignment retains its web contents reference before closure; cleanup no longer reads properties of a destroyed BrowserWindow, fixing the main-process “Object has been destroyed” exception on close.
+- Regression test reproduces Electron's throwing property getter after destruction, verifies close succeeds and listeners are released, and passes alongside the existing layout lifecycle test. Dependencies restored: typecheck, all 81 tests, lint, formatting and build now pass. The installed app still needs repackaging to receive this fix.
+
+## 2026-10-26 — Hide reviewed cards and advance review
+
+- Hide Reviewed Files now removes complete file cards in both Changes and Guide; the Guide menu also updates the canvas. Guide explanations stay visible.
+- Marking an individual file Reviewed scrolls the next unreviewed card below the toolbar, skipping reviewed cards. Explicit navigation can still reveal a reviewed file.
+- Validation is incomplete: this checkout lacks dependency executables and package-manager dependency verification cannot reach the registry. Typecheck, lint, formatting, build and running-app checks remain pending.
+
 ## 2026-10-25 — Align category diff totals
 
 - Implementation, Tests and Generated diff totals now align with file-row totals at the sidebar’s right edge, before the shared Reviewed checkbox. Category file counts stay beside the heading.

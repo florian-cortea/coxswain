@@ -133,7 +133,7 @@ const affects: Record<Changed["what"], Reads[]> = {
     "listCommits",
   ],
   projects: ["listProjects"],
-  workspaces: ["listWorkspaces", "getClosedWorkspaceTabs"],
+  workspaces: ["listWorkspaces", "getClosedWorkspaceTabs", "getAutoUpdate"],
   // An agent sent its slash commands for one of its sessions.
   commands: ["agentCommands"],
   settings: [

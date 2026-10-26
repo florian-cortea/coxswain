@@ -24,7 +24,7 @@ saw fit, missed pushes made by an agent or a terminal for up to two minutes, and
 ## Decision
 
 1. **The core watches the workspace on screen** (`src/core/watch.ts`); the UI says which one shows, one at a time.
-   Every 3 s it reads two refs in git: HEAD, and the branch's `origin/` ref.
+   Every 3 s it reads two refs in git: HEAD, and the branch's `origin/` ref. It also checks local edits and unpushed commits outside an active fetch, disabling Auto-update from remote when either appears.
    - **HEAD moving** (a commit, a pull, a reset, in coxswain or not) is a change to the worktree: the core emits
      `worktree`, the UI refetches what depends on it ([ADR 0017](0017-data-fetching-with-tanstack-query.md)), and it's
      summarised ahead.
@@ -36,7 +36,7 @@ saw fit, missed pushes made by an agent or a terminal for up to two minutes, and
 2. **The core checks GitHub** for the workspace on screen: when it starts to show (unless checked in the last 10 s),
    every minute, on a push (above), when the window gets focus (unless checked in the last 10 s), and right after
    coxswain changed something there (push, open a PR, post a review, a change in the PR panel). A check fetches and
-   fast-forwards a worktree without local changes, reads the PR and mirrors its review threads into entries. It keeps
+   updates a clean worktree, including after force-pushes, when its Auto-update from remote option is on (ADR 0008), reads the PR and mirrors its review threads into entries. It keeps
    what it found; when that differs from the check before, it emits `github`, and `entries` if threads changed.
    Offline or signed out, it keeps the last good result, with a notice saying GitHub couldn't be checked.
 3. **The UI's reads of it are pure.** `openWorktree` and `readPullRequest` return what the last check found, at once,

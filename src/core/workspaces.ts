@@ -153,6 +153,10 @@ export async function getWorkspaceRepo(db: Db, workspaceId: number) {
 // worktree stays on disk; adding the PR or branch again adopts it (git.ts).
 export async function removeWorkspace(db: Db, workspaceId: number): Promise<void> {
   await db.deleteFrom("settings").where("key", "=", tabKey(workspaceId)).execute();
+  await db
+    .deleteFrom("settings")
+    .where("key", "=", `workspace.auto-update.${workspaceId}`)
+    .execute();
   await db.deleteFrom("workspaces").where("id", "=", workspaceId).execute();
   emit({ what: "workspaces" });
 }
@@ -188,5 +192,23 @@ export async function setWorkspaceTabOpen(
       .values({ key: tabKey(workspaceId), value: "closed" })
       .onConflict((conflict) => conflict.column("key").doNothing())
       .execute();
+  emit({ what: "workspaces" });
+}
+
+// Workspace-specific preferences survive restarts; absence means the default is enabled.
+export async function getAutoUpdate(db: Db, workspaceId: number): Promise<boolean> {
+  const row = await db
+    .selectFrom("settings")
+    .select("value")
+    .where("key", "=", `workspace.auto-update.${workspaceId}`)
+    .executeTakeFirst();
+  return row?.value !== "off";
+}
+export async function setAutoUpdate(db: Db, workspaceId: number, enabled: boolean): Promise<void> {
+  await db
+    .insertInto("settings")
+    .values({ key: `workspace.auto-update.${workspaceId}`, value: enabled ? "on" : "off" })
+    .onConflict((c) => c.column("key").doUpdateSet({ value: enabled ? "on" : "off" }))
+    .execute();
   emit({ what: "workspaces" });
 }

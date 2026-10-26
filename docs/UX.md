@@ -25,7 +25,7 @@ Submit Review floats at bottom-right.
 │ ●●● ▣ Project ▾  ( Workspace A │ Workspace B ) (+) (GitHub Preview Review ⚙ ▣) │
 ├────────────────┬───────────────────────────────────┬────────────────────────┤
 │ Navigator (⌘B) │ Canvas                            │ Chat                   │
-│Guide|Changes   │ Guide: section text │ file cards   │                        │
+│Guide|Changes   │ Guide: text beside/above cards   │                        │
 │ Files     ⋯    │                                   │                        │
 │ Guide progress │ Files: file tabs                  │ Agent conversation     │
 │                │        edge-to-edge whole file    │                        │
@@ -45,7 +45,7 @@ The canvas scrollport reaches the top of the window so changes pass beneath the 
 content padding and sticky headers clear the main bar: the toolbar height plus the same 24/40 px gutter used on the sides, both initially and when stuck. Navigation
 and chat retain a 44 px top inset; the workspace bar uses native glass and controls across its full width.
 Guide sections have 48 px between them; file cards have 32 px gaps. Explanation/card columns have 40 px between them on wide canvases.
-Guide explanations use 15-point text with a 1.65 line height for slightly tighter reading. Guide sections place their heading, Reviewed control and explanation to the left of their file cards.
+Guide explanations use 15-point text with a 1.65 line height for slightly tighter reading. Guide sections place their heading, Reviewed control and explanation to the left of their file cards by default. The top Settings dropdown offers Section Descriptions → Beside Files / Above Files. Above Files stacks each section’s description over its full-width file cards and disables sticky description scrolling. The choice applies to all Guide sections for the current app session.
 A muted, zero-padded section counter (01/05) sits below each authored section title, before its file count and Reviewed control.
 The synthetic Not in the guide group is unnumbered.
 The explanation stays sticky within its section, aligned with sticky card headers below the top bar; a long
@@ -261,7 +261,7 @@ _Check again_; nothing else shows until all are there. Then, with no project yet
   All file diffs of the workspace follow one another, to scroll through. The display options (sliders)
   in its bar open a native menu: _Unified_ or _Split_ file diffs and the Navigator's _Files as
   Tree_ or _Files as List_; off, reviewed file diffs are hidden, and
-  when all are, the canvas says _All N files reviewed_ with _Show them_. A file diff's header uses the same muted label styling as a guide section for its _Reviewed_
+  when all are, the canvas shows a centered, muted _All N files reviewed_ message and a bordered _Show Reviewed Files_ button, matching the sidebar. A file diff's header uses the same muted label styling as a guide section for its _Reviewed_
   checkbox.
 
   **Go to Definition.** Holding ⌘ over a name or an import path in a file diff or a whole file underlines it;
@@ -367,8 +367,7 @@ _Check again_; nothing else shows until all are there. Then, with no project yet
 
   The view shows its sections in order, each with its heading, how many file
   diffs it embeds and a _Reviewed_ checkbox that marks them all (ticked once all are; unticking unmarks them all), then its markdown (ADR 0026): prose, tables, mermaid diagrams, and embedded file diffs, which work
-  as in the diff (threads, _Reviewed_), except that a reviewed one collapses to its header rather than hiding, so the
-  explanation still accompanies it (_Show Reviewed Files_ expands them). Each section uses an explanation
+  as in the diff (threads, _Reviewed_), reviewed cards are completely hidden when _Hide Reviewed Files_ is enabled, while section explanations remain visible. The canvas option lives in the top Settings dropdown and applies to both Changes and Guide, independently of sidebar filtering. Marking a file Reviewed scrolls the next unreviewed file into focus, skipping reviewed files; the last unreviewed file leaves the scroll position alone. Each section uses an explanation
   column beside its embedded file cards, without a separate file overview or navigation sidebar. Text remains
   sticky within the section; long explanations scroll below the top bar. Below 960 px of canvas width,
   the explanation stacks above the cards without sticky positioning. Prose-only sections span the canvas.
@@ -419,7 +418,7 @@ _Check again_; nothing else shows until all are there. Then, with no project yet
 Whole-code views (#31) work even when the workspace has no changes. The agent can trace a process with prose,
 diagrams and source files pinned to the view's snapshot. Source-file headers have _Reviewed_ and support the same
 line comments and explanations as diffs. A file's Reviewed mark is independent of its diff and survives into another
-view only if its contents match. Reviewed source files collapse under _Show Reviewed Files_ just like diffs. Collapsed cards show only their
+view only if its contents match. Reviewed source files hide completely when _Hide Reviewed Files_ is enabled, just like diffs. Collapsed cards show only their
 header, with all four corners rounded; context placeholders and annotations leave no body strip. Section headers and the Threads section count the files and diffs in the view; the Navigator still represents the range's changes.
 A prose-only view has no reviewable files. An empty view says _Nothing in this view yet_.
 
@@ -594,3 +593,21 @@ Guide generation defaults to Claude Code/Opus 5.5 independently of retired summa
 Changes category/folder disclosures use a fixed 16-point slot in both states, keeping labels stationary. The chevron tip aligns with its child tree line using shared 20-point indentation and 16-point parent-axis metrics.
 
 Changes category diff totals align to the same right edge as file diff totals, just before the review checkbox; the file count stays beside the category name.
+
+Sidebar ⋯ menus contain only sidebar filters, grouping and Tree/List controls. The top Settings dropdown contains canvas display controls, Section Descriptions, Hide Reviewed Files and Update Guide. Sidebar review filters do not change canvas visibility.
+
+The top Settings dropdown includes Auto-update from Remote for the current workspace, checked by default. It persists across restarts, follows force-pushes for clean workspaces, and switches off automatically on local edits, untracked files or unpushed commits. It stays off until explicitly re-enabled; enabling it with local work immediately switches it off again. Other workspaces are unaffected.
+
+Hide Reviewed Files removes all reviewed cards, including the previously selected card when the option is enabled. Selecting a reviewed file in the sidebar temporarily reveals only that card while keeping the option enabled. Selecting another file or marking the revealed card Reviewed again clears the exception.
+
+Changes canvas file cards follow the Changes sidebar’s Pierre ordering: folder-first natural filename traversal for Tree, and the same filename/disambiguation order for List. When categories are enabled, cards follow Implementation, Tests, Generated. Sidebar filtering and collapsed folders do not remove cards from the canvas; canvas visibility remains independent. Guide sections retain their authored ordering.
+
+Changes tree folders have right-aligned Reviewed checkboxes, with a neutral mixed state for partially reviewed descendants. A folder checkbox marks or unmarks every changed descendant in its category, including filtered or collapsed children, without changing expansion. Clicking a partial checkbox marks the remaining files reviewed.
+
+Changes omits Implementation, Tests or Generated category sections when they contain no files matching the sidebar filters.
+
+The Changes tab count shows unreviewed files. Implementation/Tests/Generated file counts show unreviewed/total files (for example 12/24), even when reviewed files are visible. Category file counts sit directly beside the category name with a 1 px downward optical alignment; fixed-width diff totals and the Reviewed checkbox remain aligned on the right. Added/deleted totals continue describing the visible files.
+
+Submit Review omits the No open comment threads empty-state notice when Approve is selected; approving without comments is a normal review.
+
+The Changes canvas all-reviewed empty state is centered horizontally and vertically in its available body, matching the sidebar’s text size, muted colour, spacing and Show Reviewed Files button.

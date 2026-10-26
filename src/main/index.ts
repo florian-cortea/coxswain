@@ -14,6 +14,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
+import { menuResult } from "./menu-result";
 import { sidebarFilterItems } from "./sidebar-menu";
 import type { ChangesMenuResult } from "../preload";
 import { recordInteractions } from "./performance";
@@ -144,9 +145,18 @@ import { setSkillsDir } from "../core/skills";
 import { emit, onEvent } from "../core/events";
 import { listJobs, onJobs, setSummaryRunner, stopInterruptedJobs, stopJob } from "../core/jobs";
 import { checkSetup } from "../core/setup";
-import type { Layers, RangePick, ViewSettings, SettingsMenuResult, GuideOptions } from "../preload";
+import type {
+  Layers,
+  RangePick,
+  ViewSettings,
+  SettingsMenuResult,
+  GuideOptions,
+  GuideDescriptionPosition,
+} from "../preload";
 import {
   listWorkspaces,
+  getAutoUpdate,
+  setAutoUpdate,
   getClosedWorkspaceTabs,
   setWorkspaceTabOpen,
   openBranchWorkspace,
@@ -485,6 +495,7 @@ app.whenReady().then(async () => {
   ipcMain.handle("github:pull-titles", (_, owner: string, name: string, numbers: number[]) =>
     listPullRequestTitles(owner, name, numbers),
   );
+  ipcMain.handle("workspaces:auto-update", (_, id: number) => getAutoUpdate(db, id));
   ipcMain.handle("workspaces:closed-tabs", () => getClosedWorkspaceTabs(db));
   ipcMain.handle("workspaces:tab-open", (_, workspaceId: number, open: boolean) =>
     setWorkspaceTabOpen(db, workspaceId, open),
@@ -819,73 +830,120 @@ app.whenReady().then(async () => {
         ]).popup({ window: BrowserWindow.fromWebContents(e.sender) ?? undefined }),
       ),
   );
-  ipcMain.handle("menus:settings", async (e, s: ViewSettings) => {
-    const appearance = await getAppearance(db);
-    const codeTheme = await getCodeTheme(db);
-    return new Promise<SettingsMenuResult>((resolve) => {
-      const display = (settings: ViewSettings) => resolve({ kind: "display", settings });
-      Menu.buildFromTemplate([
-        {
-          label: "App Settings…",
-          accelerator: "CmdOrCtrl+,",
-          click: () => resolve({ kind: "app" }),
-        },
-        { type: "separator" },
-        {
-          label: "Appearance",
-          submenu: (["system", "light", "dark", "soft-dark"] as const).map((value) => ({
-            label: value === "soft-dark" ? "Soft Dark" : value[0].toUpperCase() + value.slice(1),
-            type: "radio" as const,
-            checked: appearance === value,
+  ipcMain.handle(
+    "menus:settings",
+    async (
+      e,
+      s: ViewSettings,
+      descriptionPosition: GuideDescriptionPosition,
+      canUpdateGuide: boolean,
+      workspaceId: number | null,
+    ) => {
+      const autoUpdate = workspaceId === null ? false : await getAutoUpdate(db, workspaceId);
+      const appearance = await getAppearance(db);
+      const codeTheme = await getCodeTheme(db);
+      return new Promise<SettingsMenuResult>((resolve) => {
+        const result = menuResult<SettingsMenuResult>(resolve, { kind: "dismissed" });
+        const display = (settings: ViewSettings) => result.pick({ kind: "display", settings });
+        Menu.buildFromTemplate([
+          {
+            label: "Auto-update from Remote",
+            type: "checkbox",
+            checked: autoUpdate,
+            enabled: workspaceId !== null,
             click: async () => {
-              nativeTheme.themeSource = nativeAppearance(await setAppearance(db, value));
-              resolve({ kind: "dismissed" });
+              if (workspaceId === null) return;
+              await setAutoUpdate(db, workspaceId, !autoUpdate);
+              await checkGitHub(db, workspaceId);
+              result.pick({ kind: "auto-update", enabled: !autoUpdate });
             },
-          })),
-        },
-        {
-          label: "Code Theme",
-          submenu: (
-            [
-              { value: "default", label: "Default" },
-              { value: "one-dark", label: "One Dark (reference)" },
-              { value: "github", label: "GitHub" },
-              { value: "catppuccin", label: "Catppuccin" },
-            ] as const
-          ).map(({ value, label }) => ({
-            label,
-            type: "radio" as const,
-            checked: codeTheme === value,
-            click: async () => {
-              await setCodeTheme(db, value);
-              resolve({ kind: "dismissed" });
-            },
-          })),
-        },
-        {
-          label: "Diff Layout",
-          submenu: (["unified", "split"] as const).map((value) => ({
-            label: value === "unified" ? "Unified" : "Split",
-            type: "radio" as const,
-            checked: s.diffStyle === value,
-            click: () => display({ ...s, diffStyle: value }),
-          })),
-        },
-      ]).popup({
-        window: BrowserWindow.fromWebContents(e.sender) ?? undefined,
-        callback: () => resolve({ kind: "dismissed" }),
+          },
+          {
+            label: "App Settings…",
+            accelerator: "CmdOrCtrl+,",
+            click: () => result.pick({ kind: "app" }),
+          },
+          { type: "separator" },
+          {
+            label: "Appearance",
+            submenu: (["system", "light", "dark", "soft-dark"] as const).map((value) => ({
+              label: value === "soft-dark" ? "Soft Dark" : value[0].toUpperCase() + value.slice(1),
+              type: "radio" as const,
+              checked: appearance === value,
+              click: async () => {
+                nativeTheme.themeSource = nativeAppearance(await setAppearance(db, value));
+                result.pick({ kind: "dismissed" });
+              },
+            })),
+          },
+          {
+            label: "Code Theme",
+            submenu: (
+              [
+                { value: "default", label: "Default" },
+                { value: "one-dark", label: "One Dark (reference)" },
+                { value: "github", label: "GitHub" },
+                { value: "catppuccin", label: "Catppuccin" },
+              ] as const
+            ).map(({ value, label }) => ({
+              label,
+              type: "radio" as const,
+              checked: codeTheme === value,
+              click: async () => {
+                await setCodeTheme(db, value);
+                result.pick({ kind: "dismissed" });
+              },
+            })),
+          },
+          {
+            label: "Diff Layout",
+            submenu: (["unified", "split"] as const).map((value) => ({
+              label: value === "unified" ? "Unified" : "Split",
+              type: "radio" as const,
+              checked: s.diffStyle === value,
+              click: () => display({ ...s, diffStyle: value }),
+            })),
+          },
+          {
+            label: "Hide Reviewed Files",
+            type: "checkbox",
+            checked: !s.showReviewed,
+            click: () => display({ ...s, showReviewed: !s.showReviewed }),
+          },
+          {
+            label: "Section Descriptions",
+            submenu: [
+              {
+                label: "Beside Files",
+                type: "radio",
+                checked: descriptionPosition === "beside",
+                click: () => result.pick({ kind: "description-position", position: "beside" }),
+              },
+              {
+                label: "Above Files",
+                type: "radio",
+                checked: descriptionPosition === "above",
+                click: () => result.pick({ kind: "description-position", position: "above" }),
+              },
+            ],
+          },
+          {
+            label: "Update Guide",
+            enabled: canUpdateGuide,
+            click: () => result.pick({ kind: "update-guide" }),
+          },
+        ]).popup({
+          window: BrowserWindow.fromWebContents(e.sender) ?? undefined,
+          callback: result.close,
+        });
       });
-    });
-  });
+    },
+  );
   ipcMain.handle(
     "menus:guide",
     (e, options: GuideOptions, authors: GuideAuthor[]) =>
-      new Promise<GuideOptions | "update" | null>((resolve) => {
-        Menu.buildFromTemplate([
-          { label: "Update Guide", click: () => resolve("update") },
-          { type: "separator" },
-          ...sidebarFilterItems(options, authors, resolve),
-        ]).popup({
+      new Promise<GuideOptions | null>((resolve) => {
+        Menu.buildFromTemplate(sidebarFilterItems(options, authors, resolve)).popup({
           window: BrowserWindow.fromWebContents(e.sender) ?? undefined,
           callback: () => resolve(null),
         });
@@ -922,21 +980,14 @@ app.whenReady().then(async () => {
     "menus:files",
     (e, settings: ViewSettings) =>
       new Promise<ViewSettings | null>((resolve) => {
-        Menu.buildFromTemplate([
-          {
-            label: "Show Reviewed Files",
-            type: "checkbox",
-            checked: settings.showReviewed,
-            click: () => resolve({ ...settings, showReviewed: !settings.showReviewed }),
-          },
-          { type: "separator" },
-          ...(["tree", "list"] as const).map((layout) => ({
+        Menu.buildFromTemplate(
+          (["tree", "list"] as const).map((layout) => ({
             label: layout === "tree" ? "Files as Tree" : "Files as List",
             type: "radio" as const,
             checked: settings.layout === layout,
             click: () => resolve({ ...settings, layout }),
           })),
-        ]).popup({
+        ).popup({
           window: BrowserWindow.fromWebContents(e.sender) ?? undefined,
           callback: () => resolve(null),
         });

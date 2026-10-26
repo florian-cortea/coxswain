@@ -72,3 +72,5 @@ which requires Apple Command Line Tools; `pnpm native:glass --arch arm64,x64` bu
 
 Guide explanations use Chromium scroll-state queries on a sticky wrapper to enable the inner scrollport
 only while stuck at the top. Its height stays bounded in both states to avoid relayout during scrolling.
+
+Required dependency patches are declared in `pnpm-workspace.yaml`, alongside explicit dependency build permissions. This keeps them active with pnpm 12, which no longer reads the package.json pnpm field. The hover-action patch uses cumulative new-file hunk offsets so strict patch parsers can apply it.

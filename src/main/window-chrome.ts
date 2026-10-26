@@ -8,6 +8,8 @@ export const windowButtonPosition = { x: 16, y: (44 - 14) / 2 };
 export function alignWindowButtons(win: BrowserWindow) {
   let pending: ReturnType<typeof setImmediate> | undefined;
   const events: EventEmitter = win;
+  // BrowserWindow properties are unavailable by the time closed fires.
+  const contents = win.webContents;
   const schedule = () => {
     if (pending !== undefined) return;
     pending = setImmediate(() => {
@@ -29,11 +31,11 @@ export function alignWindowButtons(win: BrowserWindow) {
     "leave-full-screen",
   ] as const;
   for (const event of layoutEvents) events.on(event, schedule);
-  win.webContents.on("did-finish-load", schedule);
+  contents.on("did-finish-load", schedule);
   win.once("closed", () => {
     if (pending !== undefined) clearImmediate(pending);
     for (const event of layoutEvents) events.off(event, schedule);
-    win.webContents.off("did-finish-load", schedule);
+    contents.off("did-finish-load", schedule);
   });
   schedule();
 }

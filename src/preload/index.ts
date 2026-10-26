@@ -59,6 +59,7 @@ export type GuideOptions = {
   hiddenAuthors: string[];
   shownAuthors: string[];
 };
+export type GuideDescriptionPosition = "beside" | "above";
 export type ChangesMenuResult =
   | { kind: "filters"; options: GuideOptions }
   | { kind: "grouping"; enabled: boolean }
@@ -70,6 +71,9 @@ export type ViewSettings = {
 };
 export type SettingsMenuResult =
   | { kind: "display"; settings: ViewSettings }
+  | { kind: "description-position"; position: GuideDescriptionPosition }
+  | { kind: "update-guide" }
+  | { kind: "auto-update"; enabled: boolean }
   | { kind: "app" }
   | { kind: "dismissed" };
 
@@ -164,6 +168,8 @@ const api = {
     ipcRenderer.invoke("lsp:usages", workspaceId, at),
   // The startup check: which of git, gh (signed in) and claude are missing.
   checkSetup: (): Promise<SetupCheck> => ipcRenderer.invoke("setup:check"),
+  getAutoUpdate: (workspaceId: number): Promise<boolean> =>
+    ipcRenderer.invoke("workspaces:auto-update", workspaceId),
   getClosedWorkspaceTabs: (): Promise<number[]> => ipcRenderer.invoke("workspaces:closed-tabs"),
   setWorkspaceTabOpen: (workspaceId: number, open: boolean): Promise<void> =>
     ipcRenderer.invoke("workspaces:tab-open", workspaceId, open),
@@ -413,12 +419,21 @@ const api = {
     return () => void ipcRenderer.off("agents:entry", listener);
   },
   // Native menu (ADR 0004). Resolves with the new settings when an item is picked; stays pending if dismissed.
-  showSettingsMenu: (settings: ViewSettings): Promise<SettingsMenuResult> =>
-    ipcRenderer.invoke("menus:settings", settings),
-  showGuideMenu: (
-    options: GuideOptions,
-    authors: GuideAuthor[],
-  ): Promise<GuideOptions | "update" | null> => ipcRenderer.invoke("menus:guide", options, authors),
+  showSettingsMenu: (
+    settings: ViewSettings,
+    descriptionPosition: GuideDescriptionPosition,
+    canUpdateGuide: boolean,
+    workspaceId: number | null,
+  ): Promise<SettingsMenuResult> =>
+    ipcRenderer.invoke(
+      "menus:settings",
+      settings,
+      descriptionPosition,
+      canUpdateGuide,
+      workspaceId,
+    ),
+  showGuideMenu: (options: GuideOptions, authors: GuideAuthor[]): Promise<GuideOptions | null> =>
+    ipcRenderer.invoke("menus:guide", options, authors),
   showChangesMenu: (
     options: GuideOptions,
     authors: GuideAuthor[],
