@@ -3,6 +3,12 @@
 Where the build stands and what we owe. Newest entry first. Terms are defined in
 [the glossary](context/coxswain.md); decisions are in [the ADRs](adr/).
 
+## 2026-10-26 — Cross-platform release packaging
+
+- Enforce LF checkout for dependency patches with .gitattributes. Windows checkout had converted them to CRLF, causing pnpm 12 to reject the patch header as an invalid unquoted filename. The v1.8.0 build stopped before publication; v1.8.1 contains this packaging fix.
+- A Git checkout regression simulates core.autocrlf=true and verifies patches stay LF with their original hash.
+- Release packaging explicitly rebuilds the patched macOS bridge for both arm64 and x64 before producing downloads, rather than shipping the untouched upstream prebuild for the runner’s other architecture.
+
 ## 2026-10-26 — Release prepared versions
 
 - Final release checks caught an older queued manual Guide request replaying after a newer one; per-workspace request ordering now discards superseded replays before preparation. Repeated session lifecycle regressions verify the latest override wins.
