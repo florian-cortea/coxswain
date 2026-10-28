@@ -3,6 +3,11 @@
 Where the build stands and what we owe. Newest entry first. Terms are defined in
 [the glossary](context/coxswain.md); decisions are in [the ADRs](adr/).
 
+## 2026-10-28 — Big PRs no longer crash the main process
+
+- Opening a 1600-file PR ran the main process out of memory ("Failed to allocate memory" in `Buffer.concat`). Reviewed's fingerprints read every changed file at base and head with `git cat-file --batch`. Each worktree or GitHub change refetched those queries while the previous read still ran, because TanStack cancels the fetch but not the core call, and 1300 reads piled up at 7 GB. `readBlobs` now shares an in-flight read of the same files at the same commit.
+- Tech debt: an event that arrives after a read finishes still reads every file again. Caching each file's digest per commit would avoid that.
+
 ## 2026-10-26 — Clickable workspace bar with no open tabs
 
 - With every workspace tab closed or removed, the window took no clicks in its top bar. The empty canvas still drew its own placeholder title bar, an empty `-webkit-app-region: drag` strip that sat under the absolutely positioned workspace bar and, coming later in the DOM, overrode its buttons' `no-drag`. The placeholder is gone; the workspace bar is the only title bar there.

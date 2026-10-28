@@ -954,8 +954,26 @@ function worktreeBytes(path: string, file: string): Buffer | null {
   return existsSync(full) ? readFileSync(full) : null;
 }
 
-// Files' contents at a commit, in one `git cat-file --batch`; null where the file isn't there.
+// Contents at a commit never change, so calls for the same files share one read. Without it a big PR's Reviewed
+// queries, refetched on every worktree change while the last read still runs, pile up a git process and a copy of
+// every changed file each, until the main process runs out of memory.
+const reading = new Map<string, Promise<Map<string, Buffer | null>>>();
 function readBlobs(
+  cwd: string,
+  commit: string,
+  files: string[],
+): Promise<Map<string, Buffer | null>> {
+  const key = [cwd, commit, ...files].join("\0");
+  let read = reading.get(key);
+  if (!read) {
+    read = catBlobs(cwd, commit, files).finally(() => reading.delete(key));
+    reading.set(key, read);
+  }
+  return read;
+}
+
+// Files' contents at a commit, in one `git cat-file --batch`; null where the file isn't there.
+function catBlobs(
   cwd: string,
   commit: string,
   files: string[],
